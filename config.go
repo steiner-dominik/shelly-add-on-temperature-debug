@@ -24,6 +24,7 @@ type Config struct {
 	Token       string
 	HistorySize int
 	Timeout     time.Duration
+	MinInterval time.Duration // device queries are rate-limited to one per this interval
 	Endpoints   []EndpointConfig
 }
 
@@ -52,6 +53,10 @@ func loadConfig() (*Config, error) {
 	if err != nil || timeoutSec < 1 {
 		return nil, fmt.Errorf("QUERY_TIMEOUT_SECONDS must be an integer >= 1")
 	}
+	minIntervalSec, err := strconv.Atoi(getenv("QUERY_MIN_INTERVAL_SECONDS", "2"))
+	if err != nil || minIntervalSec < 0 {
+		return nil, fmt.Errorf("QUERY_MIN_INTERVAL_SECONDS must be an integer >= 0")
+	}
 
 	cfg := &Config{
 		Port:        getenv("PORT", "8080"),
@@ -59,6 +64,7 @@ func loadConfig() (*Config, error) {
 		Token:       os.Getenv("DEBUG_TOKEN"),
 		HistorySize: histSize,
 		Timeout:     time.Duration(timeoutSec) * time.Second,
+		MinInterval: time.Duration(minIntervalSec) * time.Second,
 	}
 
 	globalPW := os.Getenv("SHELLY_PASSWORD")
@@ -72,7 +78,7 @@ func loadConfig() (*Config, error) {
 			base = "http://" + base
 		}
 		base = strings.TrimRight(base, "/")
-		display := strings.TrimPrefix(strings.TrimPrefix(host, "http://"), "https://")
+		display := strings.TrimRight(strings.TrimPrefix(strings.TrimPrefix(host, "http://"), "https://"), "/")
 		name := getenv(fmt.Sprintf("SHELLY_%d_NAME", i), display)
 		pw := os.Getenv(fmt.Sprintf("SHELLY_%d_PASSWORD", i))
 		if pw == "" {

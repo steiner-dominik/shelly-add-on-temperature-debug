@@ -95,6 +95,13 @@ var digestParamRe = regexp.MustCompile(`(\w+)=(?:"([^"]*)"|([^\s,]+))`)
 
 // digestAuthorization builds an Authorization header answering a Digest challenge.
 func digestAuthorization(challenge, method, uri, user, pass string) (string, error) {
+	cnonceBytes := make([]byte, 8)
+	rand.Read(cnonceBytes)
+	return digestAuthorizationWithCnonce(challenge, method, uri, user, pass, hex.EncodeToString(cnonceBytes))
+}
+
+// digestAuthorizationWithCnonce is the deterministic core, separated for testing.
+func digestAuthorizationWithCnonce(challenge, method, uri, user, pass, cnonce string) (string, error) {
 	if !strings.HasPrefix(challenge, "Digest ") {
 		return "", fmt.Errorf("unsupported auth scheme in challenge %q", challenge)
 	}
@@ -129,9 +136,6 @@ func digestAuthorization(challenge, method, uri, user, pass string) (string, err
 		return hex.EncodeToString(hh.Sum(nil))
 	}
 
-	cnonceBytes := make([]byte, 8)
-	rand.Read(cnonceBytes)
-	cnonce := hex.EncodeToString(cnonceBytes)
 	const nc = "00000001"
 
 	ha1 := h(user + ":" + realm + ":" + pass)

@@ -1,16 +1,47 @@
-# Shelly Add-on Temperature Debug
+# 🌡 Shelly Add-on Temperature Debug
 
-A tiny, **stateless** web app that gives anyone a safe, instant troubleshooting
-view of the DS18B20 temperature sensors attached to one or more
-[Shelly Sensor Add-ons](https://www.shelly.com/products/shelly-sensor-addon) —
-**without** handing out the Shelly admin password or exposing the device itself
-to the internet.
+[![Build, publish and release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/actions/workflows/build.yml/badge.svg)](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/actions/workflows/build.yml)
+[![Latest release](https://img.shields.io/github/v/release/steiner-dominik/shelly-add-on-temperature-debug)](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Container](https://img.shields.io/badge/ghcr.io-container-blue)](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/pkgs/container/shelly-add-on-temperature-debug)
+
+A tiny, **stateless** web app that gives anyone a safe, instant
+troubleshooting view of the DS18B20 temperature sensors attached to one or
+more [Shelly Add-ons](https://www.shelly.com/products/shelly-plus-add-on)
+([docs](https://kb.shelly.cloud/knowledge-base/shelly-plus-add-on)) —
+**without** handing out the Shelly admin password or exposing the device
+itself to the internet.
+
+> [!NOTE]
+> **Community project.** Not affiliated with, endorsed, or supported by
+> Shelly Group / Allterco Robotics. "Shelly" is a trademark of its
+> respective owner and is used here only to describe compatibility.
+
+<p align="center">
+  <img src="docs/screenshot.png" alt="Debug page showing one Shelly with four DS18B20 sensors, one of them failing with guidance text, plus a history chart" width="720">
+</p>
 
 Typical use case: your dashboard lives at `mydashboard.example.com`, and you
 want a helper to open `mydashboard.example.com/debug`, press one button, and
 immediately see which sensor is healthy, which one reports the infamous
 **85 °C power-on value**, and which one doesn't answer at all — with
 plain-language guidance on what to check.
+
+## Features
+
+- 🔒 **Server-side querying** — the browser never talks to the Shelly and
+  never sees the password (RFC 7616 digest auth, SHA-256)
+- 📡 Works with Shelly **Gen2/Gen3/Gen4** devices (RPC API), multiple
+  sensors per device, multiple devices
+- 🩺 **Failure classification with guidance**: OK · 85 °C reset · no
+  reading · missing · unreachable · auth failed · no sensors
+- 📈 **In-memory history graph** (one point per button press) makes
+  intermittent failures visible
+- 🌍 **Multi-language** (English, German — [add yours](docs/TRANSLATIONS.md)
+  with a single JSON file)
+- 🌗 **Dark / light / auto** theme, switchable on the page
+- 🪶 **Stateless by design**: env-var config, history in RAM, nothing ever
+  written to disk; ~9 MB `FROM scratch` image, zero third-party dependencies
 
 ## How it works
 
@@ -20,17 +51,7 @@ Browser ──HTTPS──▶ reverse proxy ──/debug──▶ this container 
                                                password, in env only)
 ```
 
-- The **server** queries the Shelly RPC API (`Shelly.GetStatus`) — the browser
-  never talks to the Shelly and never sees the password.
-- Works with Shelly **Gen2/Gen3/Gen4** devices (the RPC API with HTTP digest
-  authentication, SHA-256).
-- Supports **multiple sensors per device** and **multiple devices**.
-- Keeps a small in-memory history (one point per button press) and draws a
-  graph, so intermittent failures become visible.
-- **Completely stateless**: configuration comes from environment variables,
-  history lives in RAM, nothing is ever written to disk. Restart = clean slate.
-
-Statuses the page distinguishes, each with guidance:
+Statuses the page distinguishes, each with localized guidance:
 
 | Status | Meaning |
 |---|---|
@@ -92,6 +113,7 @@ contiguous and start at 1.
 | `PORT` | no | `8080` | Listen port |
 | `HISTORY_SIZE` | no | `100` | In-memory samples kept per sensor |
 | `QUERY_TIMEOUT_SECONDS` | no | `5` | Per-device query timeout |
+| `QUERY_MIN_INTERVAL_SECONDS` | no | `2` | Rate limit: minimum time between real device queries; faster requests get a shared cached result |
 
 ## Reverse proxy
 
@@ -121,27 +143,72 @@ location /debug {
 - traefik.http.services.shelly-debug.loadbalancer.server.port=8080
 ```
 
-## Security notes
+## Versioning & releases
 
-- The Shelly password exists **only** inside the container's environment; it is
-  never sent to the browser and never logged.
-- The page is internet-facing by design — set `DEBUG_TOKEN` unless the URL is
-  already protected by your proxy. Anyone with page access can trigger queries
-  and read temperatures, nothing more (read-only RPC calls).
-- Always terminate TLS at your reverse proxy.
-- `/healthz` is unauthenticated and returns `ok` (for container health checks).
+Releases use **CalVer**: `YYYY.MM.DD` (UTC), with `.1`, `.2`, … appended for
+further releases on the same day. Every push to `main` automatically:
+
+1. runs tests,
+2. builds and pushes the multi-arch image to GHCR, tagged
+   `latest`, `main`, `sha-<commit>`, and the CalVer version,
+3. creates a git tag + [GitHub release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases)
+   with generated notes and standalone Linux binaries (amd64/arm64) attached.
+
+Pin the CalVer tag (e.g. `:2026.07.17`) in production if you don't want
+`latest` to move under you. The running version is shown in the page footer.
+
+## Languages
+
+The page ships in **English** and **German** and picks the browser's language
+automatically (switchable on the page). Adding a language is a single JSON
+file — see [docs/TRANSLATIONS.md](docs/TRANSLATIONS.md). Contributions
+welcome!
+
+## Security
+
+Designed to be internet-facing behind a TLS reverse proxy: the Shelly
+password never leaves the server, all device queries are read-only and
+rate-limited (no amplification against your devices), the API can be gated
+with `DEBUG_TOKEN`, and the page sets a strict Content-Security-Policy and
+loads zero external resources. Details, threat model, and hosting
+recommendations: [SECURITY.md](SECURITY.md).
+
+## Software bill of materials & updating
+
+The whole point of this project is a minimal supply chain — there is **no
+third-party runtime code at all**:
+
+| Component | Where | What it is | How to update |
+|---|---|---|---|
+| Go standard library | `go.mod` (no external modules) | The only code dependency | Bump the `go` directive in `go.mod` |
+| `golang:1.26-alpine` | `Dockerfile` (build stage only) | Compiler image; also the source of the CA bundle | Bump the tag (Dependabot PRs this) |
+| `scratch` | `Dockerfile` (runtime) | Empty base image — nothing to patch | – |
+| `actions/checkout`, `actions/setup-go`, `docker/*` actions | `.github/workflows/build.yml` | CI plumbing, not shipped in the image | Bump versions (Dependabot PRs this) |
+| Frontend | `static/index.html` | Hand-written vanilla JS/CSS, no frameworks, no CDN loads | Edit the file |
+
+[Dependabot is configured](.github/dependabot.yml) to open weekly PRs for the
+Go toolchain, the Docker base image, and the GitHub Actions. **If this repo
+ever goes unmaintained**, updating it yourself is: bump the two version
+strings (`go.mod`, `Dockerfile`), push to a fork with Actions enabled, and CI
+tests + builds + releases everything. `go build` on any machine with Go
+installed produces the identical single binary.
 
 ## API
 
 | Endpoint | Method | Description |
 |---|---|---|
 | `{BASE_PATH}/` | GET | The debug page |
-| `{BASE_PATH}/api/query` | POST/GET | Query all Shellys live, append to history, return results |
+| `{BASE_PATH}/api/query` | POST/GET | Query all Shellys live (rate-limited, cached), append to history, return results incl. status codes |
 | `{BASE_PATH}/api/history` | GET | The in-memory history buffer |
+| `{BASE_PATH}/locales/index.json` | GET | Available languages |
+| `{BASE_PATH}/locales/{code}.json` | GET | Locale strings (labels + guidance) |
 | `/healthz` | GET | Liveness probe (no auth) |
 
-With `DEBUG_TOKEN` set, API calls need the `X-Debug-Token` header or
-`?token=` query parameter.
+With `DEBUG_TOKEN` set, the two `/api/*` endpoints need the `X-Debug-Token`
+header or `?token=` query parameter. Machine-readable status codes (`ok`,
+`reset85`, `read_error`, `missing`, `unreachable`, `auth_failed`,
+`no_sensors`) are returned in the JSON; human-readable texts live in the
+locale files.
 
 ## Development
 
@@ -149,12 +216,8 @@ With `DEBUG_TOKEN` set, API calls need the `X-Debug-Token` header or
 export SHELLY_1_HOST=192.168.1.50 SHELLY_1_PASSWORD='…'
 go run .
 # → http://localhost:8080/debug
+go test ./...
 ```
-
-No third-party Go dependencies — stdlib only. The container image is built
-`FROM scratch` (≈7 MB) and published to GHCR automatically by
-[GitHub Actions](.github/workflows/build.yml) on every push to `main`
-(multi-arch: amd64 + arm64).
 
 ## License
 

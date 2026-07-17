@@ -19,10 +19,11 @@
   --series-1: #2a78d6; --series-2: #1baf7a; --series-3: #eda100; --series-4: #008300;
   --series-5: #4a3aa7; --series-6: #e34948; --series-7: #e87ba4; --series-8: #eb6834;
   --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-text: #006300; --warn-text: #8a5a00;
   --good-bg: rgba(12,163,12,.12); --warning-bg: rgba(250,178,25,.18); --critical-bg: rgba(208,59,59,.12);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --surface-1: #1a1a19;
     --page: #0d0d0d;
@@ -34,17 +35,39 @@
     --border: rgba(255,255,255,0.10);
     --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #008300;
     --series-5: #9085e9; --series-6: #e66767; --series-7: #d55181; --series-8: #d95926;
+    --good-text: #0ca30c; --warn-text: #fab219;
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --page: #0d0d0d;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #008300;
+  --series-5: #9085e9; --series-6: #e66767; --series-7: #d55181; --series-8: #d95926;
+  --good-text: #0ca30c; --warn-text: #fab219;
 }
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--page); color: var(--text-primary);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
-h1 { font-size: 1.35rem; margin: 0 0 4px; }
-.sub { color: var(--text-secondary); margin: 0 0 20px; font-size: .92rem; }
-.toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+header.top { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+.titleblock { flex: 1 1 320px; }
+h1 { font-size: 1.35rem; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+h1 .logo { display: inline-flex; width: 34px; height: 34px; border-radius: 9px; background: var(--text-primary);
+  color: var(--page); align-items: center; justify-content: center; font-size: 19px; flex: none; }
+.sub { color: var(--text-secondary); margin: 0; font-size: .92rem; }
+.prefs { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.prefs select { font: inherit; font-size: .84rem; padding: 5px 8px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); }
+.toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0; }
 button.primary {
   font: inherit; font-weight: 600; padding: 9px 18px; border-radius: 8px; cursor: pointer;
   border: 1px solid var(--border); background: var(--text-primary); color: var(--page);
@@ -55,6 +78,12 @@ button.primary:disabled { opacity: .55; cursor: wait; }
   border: 1px solid var(--border); background: var(--surface-1); border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; }
 .tokenbox input { font: inherit; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--baseline); background: var(--page); color: var(--text-primary); min-width: 200px; }
 .tokenbox button { font: inherit; padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border); background: var(--text-primary); color: var(--page); cursor: pointer; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+.tile .v { font-size: 1.7rem; font-weight: 700; line-height: 1.2; }
+.tile .l { color: var(--muted); font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.tile.good .v { color: var(--good-text); }
+.tile.bad .v { color: var(--critical); }
 .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 14px; margin-bottom: 20px; }
 .ephead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .ephead h2 { font-size: 1.08rem; margin: 0; }
@@ -62,10 +91,9 @@ button.primary:disabled { opacity: .55; cursor: wait; }
 .epmeta { color: var(--text-secondary); font-size: .82rem; margin: 3px 0 10px; }
 .chip { display: inline-flex; align-items: center; gap: 5px; font-size: .78rem; font-weight: 600;
   padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
-.chip.ok       { color: var(--good);     background: var(--good-bg); }
-.chip.warn     { color: #8a5a00;         background: var(--warning-bg); }
-.chip.crit     { color: var(--critical); background: var(--critical-bg); }
-@media (prefers-color-scheme: dark) { .chip.warn { color: var(--warning); } }
+.chip.ok   { color: var(--good-text); background: var(--good-bg); }
+.chip.warn { color: var(--warn-text); background: var(--warning-bg); }
+.chip.crit { color: var(--critical);  background: var(--critical-bg); }
 table.sensors { width: 100%; border-collapse: collapse; }
 table.sensors td, table.sensors th { padding: 8px 8px; text-align: left; border-top: 1px solid var(--grid); vertical-align: top; }
 table.sensors th { color: var(--muted); font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; border-top: none; }
@@ -92,32 +120,47 @@ svg.chart text { font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; fi
 .tooltip .tt-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .tooltip .tt-val { margin-left: auto; font-variant-numeric: tabular-nums; padding-left: 12px; }
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
-footer { color: var(--muted); font-size: .8rem; margin-top: 28px; }
+footer { color: var(--muted); font-size: .8rem; margin-top: 28px; border-top: 1px solid var(--grid); padding-top: 14px; }
 footer a { color: inherit; }
+footer .meta { margin-top: 8px; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Shelly Add-on Temperature Debug</h1>
-  <p class="sub">Live health check of the DS18B20 sensors attached to the Shelly Sensor Add-on(s). Queries run from the server — no direct access to the devices is exposed.</p>
+  <header class="top">
+    <div class="titleblock">
+      <h1><span class="logo" aria-hidden="true">🌡</span>Shelly Add-on Temperature Debug</h1>
+      <p class="sub" id="subtitle"></p>
+    </div>
+    <div class="prefs">
+      <select id="langsel" aria-label="Language"></select>
+      <select id="themesel" aria-label="Theme"></select>
+    </div>
+  </header>
 
   <div class="tokenbox" id="tokenbox">
-    <span>This page is protected. Enter the access token:</span>
-    <input id="tokeninput" type="password" autocomplete="off" placeholder="access token">
-    <button id="tokensave">Unlock</button>
+    <span id="tokenprompt"></span>
+    <input id="tokeninput" type="password" autocomplete="off">
+    <button id="tokensave"></button>
   </div>
 
   <div class="toolbar">
-    <button class="primary" id="querybtn">Query sensors now</button>
+    <button class="primary" id="querybtn"></button>
     <span class="lastq" id="lastq"></span>
   </div>
 
-  <div id="results"><p class="empty">Querying…</p></div>
+  <div class="tiles" id="tiles" style="display:none"></div>
+
+  <div id="results"><p class="empty">…</p></div>
 
   <footer>
-    Statuses: <b>OK</b> — sensor reports a plausible value · <b>85 °C reset</b> — sensor rebooted before measuring (wiring/power) ·
-    <b>No reading</b> — sensor didn't answer (wiring/contact) · <b>Missing</b> — configured but not detected.
-    History is kept in memory only and resets when the service restarts.
+    <div id="legendline"></div>
+    <div id="historynote"></div>
+    <div class="meta">
+      <span id="disclaimer"></span><br>
+      Shelly Add-on Temperature Debug __VERSION__ ·
+      <a href="https://github.com/steiner-dominik/shelly-add-on-temperature-debug" rel="noopener">GitHub</a> · MIT
+    </div>
   </footer>
 </main>
 <div class="tooltip" id="tooltip"></div>
@@ -129,7 +172,64 @@ const $ = id => document.getElementById(id);
 const SERIES = [1,2,3,4,5,6,7,8].map(i => `var(--series-${i})`);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-// --- token handling (optional, only enforced if DEBUG_TOKEN is set server-side) ---
+// --- i18n -------------------------------------------------------------
+let L = null;         // active locale object
+let locales = [];     // [{code, name}]
+const fmt = (s, vars) => String(s || "").replace(/\{(\w+)\}/g, (_, k) => vars && k in vars ? vars[k] : "{" + k + "}");
+const t = key => (L && L.ui && L.ui[key]) || key;
+
+async function loadLocales() {
+  locales = await (await fetch(base + "/locales/index.json")).json();
+  let lang = localStorage.getItem("lang");
+  if (!locales.some(l => l.code === lang)) {
+    const nav = (navigator.language || "en").slice(0, 2).toLowerCase();
+    lang = locales.some(l => l.code === nav) ? nav : "en";
+  }
+  L = await (await fetch(base + "/locales/" + lang + ".json")).json();
+  document.documentElement.lang = lang;
+  const sel = $("langsel");
+  sel.innerHTML = locales.map(l => `<option value="${esc(l.code)}"${l.code === lang ? " selected" : ""}>${esc(l.name)}</option>`).join("");
+  sel.onchange = async () => {
+    localStorage.setItem("lang", sel.value);
+    L = await (await fetch(base + "/locales/" + sel.value + ".json")).json();
+    document.documentElement.lang = sel.value;
+    applyChrome();
+    if (lastData) {
+      render(lastData, lastHist);
+      $("lastq").textContent = fmt(t("lastQuery"), { time: new Date(lastData.ts * 1000).toLocaleTimeString() });
+    }
+  };
+}
+
+function applyChrome() {
+  $("subtitle").textContent = t("subtitle");
+  $("querybtn").textContent = t("queryBtn");
+  $("tokenprompt").textContent = t("tokenPrompt");
+  $("tokeninput").placeholder = t("tokenPlaceholder");
+  $("tokensave").textContent = t("unlock");
+  $("historynote").textContent = t("historyNote");
+  $("disclaimer").textContent = t("disclaimer");
+  const lg = [["ok", "legendOk"], ["reset85", "legendReset85"], ["read_error", "legendReadError"], ["missing", "legendMissing"]]
+    .map(([st, key]) => `<b>${esc(L.status[st])}</b> — ${esc(t(key))}`).join(" · ");
+  $("legendline").innerHTML = `${esc(t("legendTitle"))} ${lg}`;
+  const th = $("themesel");
+  const cur = localStorage.getItem("theme") || "auto";
+  th.innerHTML = [["auto", "themeAuto"], ["light", "themeLight"], ["dark", "themeDark"]]
+    .map(([v, key]) => `<option value="${v}"${v === cur ? " selected" : ""}>${esc(t(key))}</option>`).join("");
+}
+
+// --- theme ------------------------------------------------------------
+function applyTheme(mode) {
+  if (mode === "light" || mode === "dark") document.documentElement.dataset.theme = mode;
+  else delete document.documentElement.dataset.theme;
+}
+applyTheme(localStorage.getItem("theme") || "auto");
+$("themesel").addEventListener("change", e => {
+  localStorage.setItem("theme", e.target.value);
+  applyTheme(e.target.value);
+});
+
+// --- token handling (optional, only enforced if DEBUG_TOKEN is set) ---
 const url = new URL(location.href);
 if (url.searchParams.has("token")) {
   localStorage.setItem("debugToken", url.searchParams.get("token"));
@@ -137,8 +237,8 @@ if (url.searchParams.has("token")) {
   history.replaceState(null, "", url.toString());
 }
 function authHeaders() {
-  const t = localStorage.getItem("debugToken");
-  return t ? { "X-Debug-Token": t } : {};
+  const tok = localStorage.getItem("debugToken");
+  return tok ? { "X-Debug-Token": tok } : {};
 }
 $("tokensave").addEventListener("click", () => {
   localStorage.setItem("debugToken", $("tokeninput").value.trim());
@@ -147,7 +247,7 @@ $("tokensave").addEventListener("click", () => {
 });
 $("tokeninput").addEventListener("keydown", e => { if (e.key === "Enter") $("tokensave").click(); });
 
-// --- querying ---
+// --- querying ---------------------------------------------------------
 async function api(path, opts = {}) {
   const resp = await fetch(base + path, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
   if (resp.status === 401) { throw { unauthorized: true }; }
@@ -155,67 +255,83 @@ async function api(path, opts = {}) {
   return resp.json();
 }
 
+let lastData = null, lastHist = null;
 async function runQuery() {
   const btn = $("querybtn");
-  btn.disabled = true; btn.textContent = "Querying…";
+  btn.disabled = true; btn.textContent = t("querying");
   try {
     const data = await api("/api/query", { method: "POST" });
     const hist = await api("/api/history");
+    lastData = data; lastHist = hist;
     render(data, hist);
-    $("lastq").textContent = "Last query: " + new Date(data.ts * 1000).toLocaleTimeString();
+    $("lastq").textContent = fmt(t("lastQuery"), { time: new Date(data.ts * 1000).toLocaleTimeString() });
   } catch (e) {
     if (e && e.unauthorized) {
       $("tokenbox").style.display = "flex";
-      $("results").innerHTML = '<p class="empty">Locked — enter the access token above.</p>';
+      $("results").innerHTML = `<p class="empty">${esc(t("locked"))}</p>`;
     } else {
-      $("results").innerHTML = '<p class="empty">Query failed: ' + esc(e.message || e) + "</p>";
+      $("results").innerHTML = `<p class="empty">${esc(fmt(t("queryFailed"), { err: e.message || e }))}</p>`;
     }
   } finally {
-    btn.disabled = false; btn.textContent = "Query sensors now";
+    btn.disabled = false; btn.textContent = t("queryBtn");
   }
 }
 $("querybtn").addEventListener("click", runQuery);
 
-// --- rendering ---
+// --- rendering --------------------------------------------------------
 const CHIP = {
-  ok:          { cls: "ok",   icon: "✓", label: "OK" },
-  reset85:     { cls: "warn", icon: "⚠", label: "85 °C reset" },
-  read_error:  { cls: "crit", icon: "✕", label: "No reading" },
-  missing:     { cls: "crit", icon: "✕", label: "Missing" },
-  unreachable: { cls: "crit", icon: "✕", label: "Unreachable" },
-  auth_failed: { cls: "crit", icon: "✕", label: "Auth failed" },
-  no_sensors:  { cls: "warn", icon: "⚠", label: "No sensors" },
+  ok: "ok", reset85: "warn", read_error: "crit", missing: "crit",
+  unreachable: "crit", auth_failed: "crit", no_sensors: "warn",
 };
+const ICON = { ok: "✓", warn: "⚠", crit: "✕" };
 const chip = st => {
-  const c = CHIP[st] || { cls: "warn", icon: "?", label: st };
-  return `<span class="chip ${c.cls}"><span aria-hidden="true">${c.icon}</span>${c.label}</span>`;
+  const cls = CHIP[st] || "warn";
+  return `<span class="chip ${cls}"><span aria-hidden="true">${ICON[cls]}</span>${esc(L.status[st] || st)}</span>`;
 };
-const fmtT = t => t == null ? "—" : t.toFixed(1) + " °C";
+const fmtT = v => v == null ? "—" : v.toFixed(1) + " °C";
+
+function renderTiles(data) {
+  const eps = data.endpoints;
+  const devOk = eps.filter(e => e.status === "ok").length;
+  const allSensors = eps.flatMap(e => e.sensors);
+  const senOk = allSensors.filter(s => s.status === "ok").length;
+  const problems = (eps.length - devOk) + (allSensors.length - senOk);
+  const tiles = [
+    { v: `${devOk}/${eps.length}`, l: t("tileDevices"), cls: devOk === eps.length ? "good" : "bad" },
+    { v: `${senOk}/${allSensors.length}`, l: t("tileSensors"), cls: senOk === allSensors.length ? "good" : "bad" },
+    { v: String(problems), l: t("tileProblems"), cls: problems === 0 ? "good" : "bad" },
+  ];
+  $("tiles").innerHTML = tiles.map(x => `<div class="tile ${x.cls}"><div class="v">${esc(x.v)}</div><div class="l">${esc(x.l)}</div></div>`).join("");
+  $("tiles").style.display = "";
+}
 
 function render(data, hist) {
+  renderTiles(data);
   const out = [];
   data.endpoints.forEach((ep, epIdx) => {
-    const meta = [ep.device, ep.wifiRssi != null ? `Wi-Fi ${ep.wifiRssi} dBm` : null,
-      ep.uptimeSec != null ? "up " + fmtUptime(ep.uptimeSec) : null].filter(Boolean).join(" · ");
+    const meta = [ep.device, ep.wifiRssi != null ? `${t("wifi")} ${ep.wifiRssi} dBm` : null,
+      ep.uptimeSec != null ? `${t("uptime")} ${fmtUptime(ep.uptimeSec)}` : null].filter(Boolean).join(" · ");
     let body = "";
     if (ep.status !== "ok") {
-      body += `<div class="guide ${CHIP[ep.status] ? CHIP[ep.status].cls : "warn"}">${esc(ep.guidance || "")}${ep.error ? `<br><span class="skey">${esc(ep.error)}</span>` : ""}</div>`;
+      const g = (L.guidance.endpoint || {})[ep.status] || "";
+      body += `<div class="guide ${CHIP[ep.status] || "warn"}">${esc(g)}${ep.error ? `<br><span class="skey">${esc(ep.error)}</span>` : ""}</div>`;
     }
     if (ep.sensors.length) {
-      body += `<table class="sensors"><tr><th>Sensor</th><th>Temperature</th><th>Status</th></tr>`;
+      body += `<table class="sensors"><tr><th>${esc(t("colSensor"))}</th><th>${esc(t("colTemperature"))}</th><th>${esc(t("colStatus"))}</th></tr>`;
       ep.sensors.forEach((s, i) => {
         body += `<tr>
           <td><span class="dot" style="background:${SERIES[i % 8]}"></span><span class="sname">${esc(s.name)}</span><br><span class="skey">${esc(s.key)}</span></td>
           <td><span class="temp ${s.tC == null ? "na" : ""}">${fmtT(s.tC)}</span></td>
           <td>${chip(s.status)}</td></tr>`;
-        if (s.guidance) {
-          body += `<tr><td colspan="3" style="border-top:none;padding-top:0"><div class="guide ${CHIP[s.status].cls}">${esc(s.guidance)}</div></td></tr>`;
-        }
+        const g = (L.guidance.sensor || {})[s.status];
+        if (g) body += `<tr><td colspan="3" style="border-top:none;padding-top:0"><div class="guide ${CHIP[s.status]}">${esc(g)}</div></td></tr>`;
       });
       body += `</table>`;
     }
-    (ep.notes || []).forEach(n => { body += `<p class="note">ℹ️ ${esc(n)}</p>`; });
-    body += chartFor(ep, hist.endpoints[ep.name] || {}, epIdx);
+    if (ep.wifiRssi != null && ep.wifiRssi <= -75) {
+      body += `<p class="note">ℹ️ ${esc(fmt(t("wifiWeak"), { rssi: ep.wifiRssi }))}</p>`;
+    }
+    body += chartFor(ep, (hist.endpoints || {})[ep.name] || {}, epIdx);
     out.push(`<div class="card">
       <div class="ephead"><h2>${esc(ep.name)}</h2><span class="ephost">${esc(ep.host)}</span>${chip(ep.status)}</div>
       ${meta ? `<div class="epmeta">${esc(meta)}</div>` : ""}${body}</div>`);
@@ -284,7 +400,8 @@ function chartFor(ep, histSensors, epIdx) {
     return `<span><span class="dot" style="background:${s.color}"></span>${esc(s.name)}&nbsp;<b>${fmtT(last ? last.tC : null)}</b></span>`;
   }).join("");
 
-  return `<div class="chartwrap"><div class="charttitle">History (this session, ${tsList.length} quer${tsList.length === 1 ? "y" : "ies"})</div>
+  const title = fmt(t("history"), { n: tsList.length, queries: tsList.length === 1 ? t("queryOne") : t("queryOther") });
+  return `<div class="chartwrap"><div class="charttitle">${esc(title)}</div>
     <svg class="chart" viewBox="0 0 ${W} ${H}" data-ep="${epIdx}" preserveAspectRatio="none">
       <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="var(--baseline)" stroke-width="1"/>
       ${g}
@@ -314,7 +431,7 @@ function bindTooltips() {
       series.forEach(s => {
         const sm = s.byTs.get(best);
         if (!sm) return;
-        rows += `<div class="tt-row"><span class="dot" style="background:${s.color}"></span>${esc(s.name)}<span class="tt-val">${sm.tC == null ? (CHIP[sm.status] || {}).label || "—" : fmtT(sm.tC)}</span></div>`;
+        rows += `<div class="tt-row"><span class="dot" style="background:${s.color}"></span>${esc(s.name)}<span class="tt-val">${sm.tC == null ? esc(L.status[sm.status] || "—") : fmtT(sm.tC)}</span></div>`;
       });
       tt.innerHTML = `<div class="tt-time">${fmtClock(best)}</div>` + rows;
       tt.style.display = "block";
@@ -329,7 +446,16 @@ function bindTooltips() {
   });
 }
 
-runQuery();
+// --- boot -------------------------------------------------------------
+(async () => {
+  try {
+    await loadLocales();
+  } catch (e) {
+    L = { ui: {}, status: {}, guidance: { sensor: {}, endpoint: {} } };
+  }
+  applyChrome();
+  runQuery();
+})();
 </script>
 </body>
 </html>

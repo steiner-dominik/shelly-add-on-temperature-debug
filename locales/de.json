@@ -1,0 +1,58 @@
+{
+  "meta": { "code": "de", "name": "Deutsch" },
+  "ui": {
+    "subtitle": "Live-Zustandsprüfung der DS18B20-Sensoren am Shelly Sensor Add-on. Die Abfragen laufen über den Server — es besteht kein direkter Zugriff auf die Geräte.",
+    "queryBtn": "Sensoren jetzt abfragen",
+    "querying": "Abfrage läuft…",
+    "lastQuery": "Letzte Abfrage: {time}",
+    "tokenPrompt": "Diese Seite ist geschützt. Zugangs-Token eingeben:",
+    "tokenPlaceholder": "Zugangs-Token",
+    "unlock": "Entsperren",
+    "locked": "Gesperrt — bitte oben den Zugangs-Token eingeben.",
+    "queryFailed": "Abfrage fehlgeschlagen: {err}",
+    "colSensor": "Sensor",
+    "colTemperature": "Temperatur",
+    "colStatus": "Status",
+    "history": "Verlauf (diese Sitzung, {n} {queries})",
+    "queryOne": "Abfrage",
+    "queryOther": "Abfragen",
+    "tileDevices": "Geräte OK",
+    "tileSensors": "Sensoren OK",
+    "tileProblems": "Probleme",
+    "allOk": "Alle Sensoren in Ordnung.",
+    "wifi": "WLAN",
+    "uptime": "läuft seit",
+    "wifiWeak": "Schwaches WLAN-Signal ({rssi} dBm) — zeitweise Ausfälle können auch daran liegen, dass der Shelly selbst die Netzwerkverbindung verliert.",
+    "themeAuto": "Auto",
+    "themeLight": "Hell",
+    "themeDark": "Dunkel",
+    "legendTitle": "Status-Bedeutungen:",
+    "legendOk": "Sensor liefert einen plausiblen Wert",
+    "legendReset85": "Sensor hat vor der Messung neu gestartet (Verkabelung/Stromversorgung)",
+    "legendReadError": "Sensor hat nicht geantwortet (Verkabelung/Kontakt)",
+    "legendMissing": "konfiguriert, aber nicht erkannt",
+    "historyNote": "Der Verlauf wird nur im Arbeitsspeicher gehalten und geht bei einem Neustart des Dienstes verloren.",
+    "disclaimer": "Community-Projekt — nicht verbunden mit, unterstützt oder autorisiert von Shelly Group / Allterco Robotics."
+  },
+  "status": {
+    "ok": "OK",
+    "reset85": "85-°C-Reset",
+    "read_error": "Keine Messung",
+    "missing": "Fehlt",
+    "unreachable": "Nicht erreichbar",
+    "auth_failed": "Login fehlgeschlagen",
+    "no_sensors": "Keine Sensoren"
+  },
+  "guidance": {
+    "sensor": {
+      "read_error": "Der Sensor hat auf die letzte Abfrage nicht geantwortet. Das ist fast immer ein Verkabelungs- oder Kontaktproblem: Stecker am Add-on neu aufstecken, die drei Klemmen (GND / DATA / 3V3) auf lockere oder korrodierte Adern prüfen und das Kabel auf Beschädigung oder Feuchtigkeit untersuchen. Fallen alle Sensoren dieses Geräts gleichzeitig aus, liegt es eher am gemeinsamen Kabel oder am Add-on selbst.",
+      "reset85": "Exakt 85,0 °C ist der Einschalt-Standardwert des DS18B20: Der Sensor hat neu gestartet und wurde ausgelesen, bevor eine echte Messung fertig war. Das deutet auf eine instabile Versorgung oder Datenleitung hin — zu langes oder schlechtes Kabel, Wackelkontakt oder Störungen. Erneut abfragen: Kommt 85,0 immer wieder, wie ein Verkabelungsproblem behandeln. (Falls ~85 °C hier physikalisch plausibel ist, mit einer zweiten Messung prüfen.)",
+      "missing": "Dieser Sensor ist auf dem Shelly konfiguriert, seine Komponente fehlt aber im Live-Status. Er wurde möglicherweise abgeklemmt oder das Add-on hat ihn verloren. Im Shelly-Webinterface unter Add-on / Peripherals die Sensoren neu erkennen lassen und die Verkabelung prüfen."
+    },
+    "endpoint": {
+      "unreachable": "Der Shelly war überhaupt nicht erreichbar (Timeout oder Verbindung abgelehnt). Prüfen: Ist das Gerät mit Strom versorgt und online, stimmt IP/FQDN, und kommt dieser Server überhaupt zum Gerät durch (VPN/Firewall)? Auch ein schwaches WLAN am Shelly kann zeitweise Timeouts verursachen.",
+      "auth_failed": "Der Shelly hat die Zugangsdaten abgelehnt (HTTP 401). Konfiguriertes Passwort (SHELLY_n_PASSWORD / SHELLY_PASSWORD) und Benutzer prüfen.",
+      "no_sensors": "Der Shelly hat geantwortet, meldet aber keine Add-on-Temperatursensoren (keine temperature:100+-Komponenten). Ist das Sensor Add-on angesteckt und aktiviert, und wurden die DS18B20-Sensoren im Shelly-Webinterface (Add-on / Peripherals) erkannt?"
+    }
+  }
+}

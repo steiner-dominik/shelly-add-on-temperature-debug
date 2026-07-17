@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Go toolchain / future Go dependencies (currently: none, stdlib only)
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+  # Base images in the Dockerfile (golang:x-alpine)
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  # GitHub Actions used by the workflow
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

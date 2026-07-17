@@ -1,0 +1,58 @@
+{
+  "meta": { "code": "en", "name": "English" },
+  "ui": {
+    "subtitle": "Live health check of the DS18B20 sensors attached to the Shelly Sensor Add-on(s). Queries run from the server — no direct access to the devices is exposed.",
+    "queryBtn": "Query sensors now",
+    "querying": "Querying…",
+    "lastQuery": "Last query: {time}",
+    "tokenPrompt": "This page is protected. Enter the access token:",
+    "tokenPlaceholder": "access token",
+    "unlock": "Unlock",
+    "locked": "Locked — enter the access token above.",
+    "queryFailed": "Query failed: {err}",
+    "colSensor": "Sensor",
+    "colTemperature": "Temperature",
+    "colStatus": "Status",
+    "history": "History (this session, {n} {queries})",
+    "queryOne": "query",
+    "queryOther": "queries",
+    "tileDevices": "Devices OK",
+    "tileSensors": "Sensors OK",
+    "tileProblems": "Problems",
+    "allOk": "All sensors healthy.",
+    "wifi": "Wi-Fi",
+    "uptime": "up",
+    "wifiWeak": "Weak Wi-Fi signal ({rssi} dBm) — intermittent dropouts can also be caused by the Shelly itself losing its network connection.",
+    "themeAuto": "Auto",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "legendTitle": "Statuses:",
+    "legendOk": "sensor reports a plausible value",
+    "legendReset85": "sensor rebooted before measuring (wiring/power)",
+    "legendReadError": "sensor didn't answer the read (wiring/contact)",
+    "legendMissing": "configured but not detected",
+    "historyNote": "History is kept in memory only and resets when the service restarts.",
+    "disclaimer": "Community project — not affiliated with, endorsed, or supported by Shelly Group / Allterco Robotics."
+  },
+  "status": {
+    "ok": "OK",
+    "reset85": "85 °C reset",
+    "read_error": "No reading",
+    "missing": "Missing",
+    "unreachable": "Unreachable",
+    "auth_failed": "Auth failed",
+    "no_sensors": "No sensors"
+  },
+  "guidance": {
+    "sensor": {
+      "read_error": "The sensor did not answer the last read. This is almost always a wiring or contact problem: re-seat the plug on the add-on, check the three terminals (GND / DATA / 3V3) for loose or corroded wires, and inspect the cable for damage or moisture. If all sensors on this device fail at once, suspect the shared cable or the add-on board itself.",
+      "reset85": "Exactly 85.0 °C is the DS18B20 power-on default: the sensor rebooted and was read before it finished a real measurement. This points to an unstable supply or data line — cable too long or low quality, intermittent contact, or interference. Query again: if 85.0 keeps coming back, treat it like a wiring problem. (If ~85 °C is physically plausible here, verify with a second reading.)",
+      "missing": "This sensor is configured on the Shelly but its component did not appear in the live status. It may have been physically disconnected, or the add-on lost it. Open the Shelly web UI → Add-on / Peripherals and re-detect sensors, and check the wiring."
+    },
+    "endpoint": {
+      "unreachable": "The Shelly could not be reached at all (timeout or connection refused). Check: is the device powered and online, is the IP/FQDN correct, and can this server actually route to it (VPN/firewall)? A weak Wi-Fi link on the Shelly can also cause intermittent timeouts.",
+      "auth_failed": "The Shelly rejected the credentials (HTTP 401). Check the configured password (SHELLY_n_PASSWORD / SHELLY_PASSWORD) and user.",
+      "no_sensors": "The Shelly answered, but reported no add-on temperature sensors (no temperature:100+ components). Is the Sensor Add-on physically attached and enabled, and have the DS18B20 sensors been detected in the Shelly web UI (Add-on / Peripherals settings)?"
+    }
+  }
+}
