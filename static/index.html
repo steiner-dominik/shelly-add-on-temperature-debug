@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Shelly Add-on Temperature Debug</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --page: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --series-1: #2a78d6; --series-2: #1baf7a; --series-3: #eda100; --series-4: #008300;
+  --series-5: #4a3aa7; --series-6: #e34948; --series-7: #e87ba4; --series-8: #eb6834;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-bg: rgba(12,163,12,.12); --warning-bg: rgba(250,178,25,.18); --critical-bg: rgba(208,59,59,.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #008300;
+    --series-5: #9085e9; --series-6: #e66767; --series-7: #d55181; --series-8: #d95926;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--text-primary);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 1.35rem; margin: 0 0 4px; }
+.sub { color: var(--text-secondary); margin: 0 0 20px; font-size: .92rem; }
+.toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+button.primary {
+  font: inherit; font-weight: 600; padding: 9px 18px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--text-primary); color: var(--page);
+}
+button.primary:disabled { opacity: .55; cursor: wait; }
+.lastq { color: var(--muted); font-size: .85rem; }
+.tokenbox { display: none; gap: 8px; align-items: center; flex-wrap: wrap;
+  border: 1px solid var(--border); background: var(--surface-1); border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; }
+.tokenbox input { font: inherit; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--baseline); background: var(--page); color: var(--text-primary); min-width: 200px; }
+.tokenbox button { font: inherit; padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border); background: var(--text-primary); color: var(--page); cursor: pointer; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 14px; margin-bottom: 20px; }
+.ephead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ephead h2 { font-size: 1.08rem; margin: 0; }
+.ephost { color: var(--muted); font-size: .85rem; }
+.epmeta { color: var(--text-secondary); font-size: .82rem; margin: 3px 0 10px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: .78rem; font-weight: 600;
+  padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.chip.ok       { color: var(--good);     background: var(--good-bg); }
+.chip.warn     { color: #8a5a00;         background: var(--warning-bg); }
+.chip.crit     { color: var(--critical); background: var(--critical-bg); }
+@media (prefers-color-scheme: dark) { .chip.warn { color: var(--warning); } }
+table.sensors { width: 100%; border-collapse: collapse; }
+table.sensors td, table.sensors th { padding: 8px 8px; text-align: left; border-top: 1px solid var(--grid); vertical-align: top; }
+table.sensors th { color: var(--muted); font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; border-top: none; }
+.sname { font-weight: 600; }
+.skey { color: var(--muted); font-size: .78rem; }
+.temp { font-size: 1.25rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.temp.na { color: var(--muted); font-size: 1rem; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 7px; vertical-align: baseline; }
+.guide { border-left: 3px solid var(--baseline); margin: 2px 0 8px; padding: 6px 12px;
+  color: var(--text-secondary); font-size: .88rem; background: var(--page); border-radius: 0 8px 8px 0; }
+.guide.crit { border-left-color: var(--critical); }
+.guide.warn { border-left-color: var(--warning); }
+.note { color: var(--text-secondary); font-size: .85rem; margin: 8px 0 0; }
+.chartwrap { margin-top: 14px; }
+.charttitle { color: var(--muted); font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .82rem; color: var(--text-secondary); margin-top: 6px; }
+.legend span { display: inline-flex; align-items: center; }
+svg.chart { width: 100%; height: 180px; display: block; }
+svg.chart text { font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--muted); }
+.tooltip { position: fixed; pointer-events: none; z-index: 10; display: none;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 11px; font-size: .8rem; box-shadow: 0 4px 16px rgba(0,0,0,.18); max-width: 260px; }
+.tooltip .tt-time { color: var(--muted); margin-bottom: 3px; }
+.tooltip .tt-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tooltip .tt-val { margin-left: auto; font-variant-numeric: tabular-nums; padding-left: 12px; }
+.empty { color: var(--muted); text-align: center; padding: 40px 0; }
+footer { color: var(--muted); font-size: .8rem; margin-top: 28px; }
+footer a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Shelly Add-on Temperature Debug</h1>
+  <p class="sub">Live health check of the DS18B20 sensors attached to the Shelly Sensor Add-on(s). Queries run from the server — no direct access to the devices is exposed.</p>
+
+  <div class="tokenbox" id="tokenbox">
+    <span>This page is protected. Enter the access token:</span>
+    <input id="tokeninput" type="password" autocomplete="off" placeholder="access token">
+    <button id="tokensave">Unlock</button>
+  </div>
+
+  <div class="toolbar">
+    <button class="primary" id="querybtn">Query sensors now</button>
+    <span class="lastq" id="lastq"></span>
+  </div>
+
+  <div id="results"><p class="empty">Querying…</p></div>
+
+  <footer>
+    Statuses: <b>OK</b> — sensor reports a plausible value · <b>85 °C reset</b> — sensor rebooted before measuring (wiring/power) ·
+    <b>No reading</b> — sensor didn't answer (wiring/contact) · <b>Missing</b> — configured but not detected.
+    History is kept in memory only and resets when the service restarts.
+  </footer>
+</main>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+"use strict";
+const base = location.pathname.replace(/\/$/, "");
+const $ = id => document.getElementById(id);
+const SERIES = [1,2,3,4,5,6,7,8].map(i => `var(--series-${i})`);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// --- token handling (optional, only enforced if DEBUG_TOKEN is set server-side) ---
+const url = new URL(location.href);
+if (url.searchParams.has("token")) {
+  localStorage.setItem("debugToken", url.searchParams.get("token"));
+  url.searchParams.delete("token");
+  history.replaceState(null, "", url.toString());
+}
+function authHeaders() {
+  const t = localStorage.getItem("debugToken");
+  return t ? { "X-Debug-Token": t } : {};
+}
+$("tokensave").addEventListener("click", () => {
+  localStorage.setItem("debugToken", $("tokeninput").value.trim());
+  $("tokenbox").style.display = "none";
+  runQuery();
+});
+$("tokeninput").addEventListener("keydown", e => { if (e.key === "Enter") $("tokensave").click(); });
+
+// --- querying ---
+async function api(path, opts = {}) {
+  const resp = await fetch(base + path, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
+  if (resp.status === 401) { throw { unauthorized: true }; }
+  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  return resp.json();
+}
+
+async function runQuery() {
+  const btn = $("querybtn");
+  btn.disabled = true; btn.textContent = "Querying…";
+  try {
+    const data = await api("/api/query", { method: "POST" });
+    const hist = await api("/api/history");
+    render(data, hist);
+    $("lastq").textContent = "Last query: " + new Date(data.ts * 1000).toLocaleTimeString();
+  } catch (e) {
+    if (e && e.unauthorized) {
+      $("tokenbox").style.display = "flex";
+      $("results").innerHTML = '<p class="empty">Locked — enter the access token above.</p>';
+    } else {
+      $("results").innerHTML = '<p class="empty">Query failed: ' + esc(e.message || e) + "</p>";
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = "Query sensors now";
+  }
+}
+$("querybtn").addEventListener("click", runQuery);
+
+// --- rendering ---
+const CHIP = {
+  ok:          { cls: "ok",   icon: "✓", label: "OK" },
+  reset85:     { cls: "warn", icon: "⚠", label: "85 °C reset" },
+  read_error:  { cls: "crit", icon: "✕", label: "No reading" },
+  missing:     { cls: "crit", icon: "✕", label: "Missing" },
+  unreachable: { cls: "crit", icon: "✕", label: "Unreachable" },
+  auth_failed: { cls: "crit", icon: "✕", label: "Auth failed" },
+  no_sensors:  { cls: "warn", icon: "⚠", label: "No sensors" },
+};
+const chip = st => {
+  const c = CHIP[st] || { cls: "warn", icon: "?", label: st };
+  return `<span class="chip ${c.cls}"><span aria-hidden="true">${c.icon}</span>${c.label}</span>`;
+};
+const fmtT = t => t == null ? "—" : t.toFixed(1) + " °C";
+
+function render(data, hist) {
+  const out = [];
+  data.endpoints.forEach((ep, epIdx) => {
+    const meta = [ep.device, ep.wifiRssi != null ? `Wi-Fi ${ep.wifiRssi} dBm` : null,
+      ep.uptimeSec != null ? "up " + fmtUptime(ep.uptimeSec) : null].filter(Boolean).join(" · ");
+    let body = "";
+    if (ep.status !== "ok") {
+      body += `<div class="guide ${CHIP[ep.status] ? CHIP[ep.status].cls : "warn"}">${esc(ep.guidance || "")}${ep.error ? `<br><span class="skey">${esc(ep.error)}</span>` : ""}</div>`;
+    }
+    if (ep.sensors.length) {
+      body += `<table class="sensors"><tr><th>Sensor</th><th>Temperature</th><th>Status</th></tr>`;
+      ep.sensors.forEach((s, i) => {
+        body += `<tr>
+          <td><span class="dot" style="background:${SERIES[i % 8]}"></span><span class="sname">${esc(s.name)}</span><br><span class="skey">${esc(s.key)}</span></td>
+          <td><span class="temp ${s.tC == null ? "na" : ""}">${fmtT(s.tC)}</span></td>
+          <td>${chip(s.status)}</td></tr>`;
+        if (s.guidance) {
+          body += `<tr><td colspan="3" style="border-top:none;padding-top:0"><div class="guide ${CHIP[s.status].cls}">${esc(s.guidance)}</div></td></tr>`;
+        }
+      });
+      body += `</table>`;
+    }
+    (ep.notes || []).forEach(n => { body += `<p class="note">ℹ️ ${esc(n)}</p>`; });
+    body += chartFor(ep, hist.endpoints[ep.name] || {}, epIdx);
+    out.push(`<div class="card">
+      <div class="ephead"><h2>${esc(ep.name)}</h2><span class="ephost">${esc(ep.host)}</span>${chip(ep.status)}</div>
+      ${meta ? `<div class="epmeta">${esc(meta)}</div>` : ""}${body}</div>`);
+  });
+  $("results").innerHTML = out.join("");
+  bindTooltips();
+}
+
+const fmtUptime = s => s >= 86400 ? Math.floor(s / 86400) + "d " + Math.floor(s % 86400 / 3600) + "h"
+  : s >= 3600 ? Math.floor(s / 3600) + "h " + Math.floor(s % 3600 / 60) + "m" : Math.floor(s / 60) + "m";
+const fmtClock = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+// One line chart per endpoint: x = query time, y = °C, one series per sensor.
+// Failed reads (tC null) break the line and are marked with an ✕ under the plot.
+const chartData = {}; // epIdx -> {tsList, series} for tooltip lookup
+function chartFor(ep, histSensors, epIdx) {
+  const keys = ep.sensors.map(s => s.key).filter(k => histSensors[k]);
+  const series = keys.map((k, i) => ({ key: k, name: histSensors[k].name, color: SERIES[i % 8], byTs: new Map(histSensors[k].samples.map(sm => [sm.ts, sm])) }));
+  const tsSet = new Set();
+  series.forEach(s => s.byTs.forEach((_, ts) => tsSet.add(ts)));
+  const tsList = [...tsSet].sort((a, b) => a - b);
+  if (!tsList.length) return "";
+  chartData[epIdx] = { tsList, series };
+
+  const W = 820, H = 180, padL = 44, padR = 10, padT = 10, padB = 26;
+  const values = [];
+  series.forEach(s => s.byTs.forEach(sm => { if (sm.tC != null) values.push(sm.tC); }));
+  let lo = values.length ? Math.min(...values) : 0, hi = values.length ? Math.max(...values) : 1;
+  if (hi - lo < 2) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
+  const span = hi - lo; lo -= span * 0.08; hi += span * 0.08;
+  const t0 = tsList[0], t1 = tsList[tsList.length - 1];
+  const x = ts => t1 === t0 ? (padL + (W - padL - padR) / 2) : padL + (ts - t0) / (t1 - t0) * (W - padL - padR);
+  const y = v => padT + (hi - v) / (hi - lo) * (H - padT - padB);
+
+  let g = "";
+  for (let i = 0; i <= 2; i++) {
+    const v = lo + (hi - lo) * i / 2, yy = y(v);
+    g += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="var(--grid)" stroke-width="1"/>`;
+    g += `<text x="${padL - 6}" y="${yy + 4}" text-anchor="end">${v.toFixed(1)}°</text>`;
+  }
+  g += `<text x="${padL}" y="${H - 8}">${fmtClock(t0)}</text>`;
+  if (t1 !== t0) g += `<text x="${W - padR}" y="${H - 8}" text-anchor="end">${fmtClock(t1)}</text>`;
+
+  series.forEach(s => {
+    let path = "", pen = false;
+    tsList.forEach(ts => {
+      const sm = s.byTs.get(ts);
+      if (sm && sm.tC != null) {
+        path += (pen ? "L" : "M") + x(ts).toFixed(1) + " " + y(sm.tC).toFixed(1) + " ";
+        pen = true;
+      } else if (sm) {
+        // failed read: break the line, mark the failure
+        g += `<text x="${x(ts).toFixed(1)}" y="${H - padB - 4}" text-anchor="middle" style="fill:var(--critical);font-weight:700">✕</text>`;
+        pen = false;
+      } else { pen = false; }
+    });
+    if (path) g += `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    tsList.forEach(ts => {
+      const sm = s.byTs.get(ts);
+      if (sm && sm.tC != null) g += `<circle cx="${x(ts).toFixed(1)}" cy="${y(sm.tC).toFixed(1)}" r="2.5" fill="${s.color}"/>`;
+    });
+  });
+
+  const legend = series.map(s => {
+    const last = [...s.byTs.values()].pop();
+    return `<span><span class="dot" style="background:${s.color}"></span>${esc(s.name)}&nbsp;<b>${fmtT(last ? last.tC : null)}</b></span>`;
+  }).join("");
+
+  return `<div class="chartwrap"><div class="charttitle">History (this session, ${tsList.length} quer${tsList.length === 1 ? "y" : "ies"})</div>
+    <svg class="chart" viewBox="0 0 ${W} ${H}" data-ep="${epIdx}" preserveAspectRatio="none">
+      <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="var(--baseline)" stroke-width="1"/>
+      ${g}
+      <line class="xh" x1="0" y1="${padT}" x2="0" y2="${H - padB}" stroke="var(--baseline)" stroke-width="1" style="display:none"/>
+    </svg><div class="legend">${legend}</div></div>`;
+}
+
+// crosshair + tooltip: nearest query time under the cursor, all sensors listed
+function bindTooltips() {
+  const tt = $("tooltip");
+  document.querySelectorAll("svg.chart").forEach(svg => {
+    const { tsList, series } = chartData[svg.dataset.ep] || {};
+    if (!tsList) return;
+    const W = 820, padL = 44, padR = 10;
+    const t0 = tsList[0], t1 = tsList[tsList.length - 1];
+    svg.addEventListener("mousemove", e => {
+      const r = svg.getBoundingClientRect();
+      const vx = (e.clientX - r.left) / r.width * W;
+      const frac = t1 === t0 ? 0 : Math.min(1, Math.max(0, (vx - padL) / (W - padL - padR)));
+      const target = t0 + frac * (t1 - t0);
+      let best = tsList[0];
+      tsList.forEach(ts => { if (Math.abs(ts - target) < Math.abs(best - target)) best = ts; });
+      const xh = svg.querySelector(".xh");
+      const xPos = t1 === t0 ? padL + (W - padL - padR) / 2 : padL + (best - t0) / (t1 - t0) * (W - padL - padR);
+      xh.setAttribute("x1", xPos); xh.setAttribute("x2", xPos); xh.style.display = "";
+      let rows = "";
+      series.forEach(s => {
+        const sm = s.byTs.get(best);
+        if (!sm) return;
+        rows += `<div class="tt-row"><span class="dot" style="background:${s.color}"></span>${esc(s.name)}<span class="tt-val">${sm.tC == null ? (CHIP[sm.status] || {}).label || "—" : fmtT(sm.tC)}</span></div>`;
+      });
+      tt.innerHTML = `<div class="tt-time">${fmtClock(best)}</div>` + rows;
+      tt.style.display = "block";
+      const tw = tt.offsetWidth;
+      tt.style.left = Math.min(e.clientX + 14, window.innerWidth - tw - 8) + "px";
+      tt.style.top = (e.clientY + 14) + "px";
+    });
+    svg.addEventListener("mouseleave", () => {
+      tt.style.display = "none";
+      svg.querySelector(".xh").style.display = "none";
+    });
+  });
+}
+
+runQuery();
+</script>
+</body>
+</html>

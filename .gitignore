@@ -1,0 +1,10 @@
+# local build output
+/server
+/shelly-add-on-temperature-debug
+
+# never commit credentials or local env files
+*.env
+.env*
+pw.txt
+
+.DS_Store
