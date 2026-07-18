@@ -26,14 +26,20 @@ import (
 // appVersion is the CalVer release string passed to Run by package main.
 var appVersion = "dev"
 
-// indexHTML is web/static/index.html with __VERSION__ substituted at startup.
+// indexHTML / swJS are web/static files with __VERSION__ substituted at
+// startup (the service worker uses the version as its cache name).
 var indexHTML []byte
+var swJS []byte
 
 // staticAssets are the fixed-name frontend files served next to the page.
 var staticAssets = map[string]string{
-	"app.css":     "text/css; charset=utf-8",
-	"app.js":      "text/javascript; charset=utf-8",
-	"favicon.svg": "image/svg+xml",
+	"app.css":              "text/css; charset=utf-8",
+	"app.js":               "text/javascript; charset=utf-8",
+	"favicon.svg":          "image/svg+xml",
+	"manifest.webmanifest": "application/manifest+json",
+	"icon-192.png":         "image/png",
+	"icon-512.png":         "image/png",
+	"icon-maskable.png":    "image/png",
 }
 
 type server struct {
@@ -66,7 +72,7 @@ func Run(version string) {
 		log.Fatalf("configuration error: %v", err)
 	}
 	s := &server{
-		cfg: cfg, meta: newMetaCache(), history: newHistory(cfg.HistorySize),
+		cfg: cfg, meta: newMetaCache(), history: newHistory(int64(cfg.HistoryMaxMB) << 20),
 		queryMu:     make(chan struct{}, 1),
 		sensorCache: map[string]sensorCacheEntry{},
 	}
@@ -75,6 +81,11 @@ func Run(version string) {
 		log.Fatalf("embedded index.html missing: %v", err)
 	}
 	indexHTML = bytes.ReplaceAll(rawIndex, []byte("__VERSION__"), []byte(version))
+	rawSW, err := web.FS.ReadFile("static/sw.js")
+	if err != nil {
+		log.Fatalf("embedded sw.js missing: %v", err)
+	}
+	swJS = bytes.ReplaceAll(rawSW, []byte("__VERSION__"), []byte(version))
 	localeIndex, err := buildLocaleIndex()
 	if err != nil {
 		log.Fatalf("invalid locale files: %v", err)
@@ -105,6 +116,11 @@ func Run(version string) {
 			w.Write(data)
 		})
 	}
+	mux.HandleFunc(base+"/sw.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(swJS)
+	})
 	mux.HandleFunc(base+"/locales/index.json", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Write(localeIndex)
@@ -123,12 +139,30 @@ func Run(version string) {
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      60 * time.Second,
 	}
+	// Background polling: the server itself queries the Shellys on a fixed
+	// interval, so history exists before anyone opens the page. Goes through
+	// queryCached, i.e. shares the rate limit and cache with the UI.
+	if cfg.BackgroundPollSec > 0 {
+		go func() {
+			tick := time.NewTicker(time.Duration(cfg.BackgroundPollSec) * time.Second)
+			defer tick.Stop()
+			for {
+				s.queryCached(context.Background())
+				<-tick.C
+			}
+		}()
+	}
+
 	auth := "token auth required"
 	if cfg.Token == "" {
 		auth = "TOKEN AUTH DISABLED — protect this port at your reverse proxy"
 	}
-	log.Printf("shelly-add-on-temperature-debug %s: serving %d Shelly endpoint(s) on :%s%s/ (%s)",
-		version, len(cfg.Endpoints), cfg.Port, base, auth)
+	poll := "no background polling"
+	if cfg.BackgroundPollSec > 0 {
+		poll = fmt.Sprintf("background polling every %ds", cfg.BackgroundPollSec)
+	}
+	log.Printf("shelly-add-on-temperature-debug %s: serving %d Shelly endpoint(s) on :%s%s/ (%s, %s)",
+		version, len(cfg.Endpoints), cfg.Port, base, auth, poll)
 	log.Fatal(srv.ListenAndServe())
 }
 
@@ -137,7 +171,7 @@ func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Security-Policy",
-			"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+			"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
@@ -290,7 +324,7 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"size":      s.cfg.HistorySize,
+		"maxMb":     s.cfg.HistoryMaxMB,
 		"endpoints": s.history.snapshot(limit),
 	})
 }

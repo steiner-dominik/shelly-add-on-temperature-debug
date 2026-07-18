@@ -63,6 +63,17 @@ function applyChrome() {
     .map(([v, key]) => `<option value="${v}"${v === cur ? " selected" : ""}>${esc(t(key))}</option>`).join("");
 }
 
+// --- sticky toolbar offset --------------------------------------------
+// The toolbar sticks right below the top bar; its height varies with
+// wrapping (mobile) and is mirrored into --topbar-h for the CSS.
+{
+  const topbar = document.querySelector(".topbar");
+  const setTopbarH = () =>
+    document.documentElement.style.setProperty("--topbar-h", topbar.offsetHeight + "px");
+  new ResizeObserver(setTopbarH).observe(topbar);
+  setTopbarH();
+}
+
 // --- theme ------------------------------------------------------------
 function applyTheme(mode) {
   if (mode === "light" || mode === "dark") document.documentElement.dataset.theme = mode;
@@ -434,8 +445,10 @@ function render(data, hist) {
         const tr = trendFor((((hist.endpoints || {})[ep.name] || {})[s.key] || {}).samples, s.kind);
         const trendHtml = tr
           ? `<span class="trend ${tr.dir}" title="${esc(tr.title)}" aria-label="${esc(tr.title)}">${TREND_ARROW[tr.dir]}</span>` : "";
+        // <wbr> after the colon lets narrow screens break "temperature:100"
+        // cleanly between kind and id instead of overflowing the card.
         body += `<tr>
-          <td><span class="dot c${colors[s.key]}"></span><span class="sname">${esc(s.name)}</span><br><span class="skey">${esc(s.key)}</span></td>
+          <td><span class="dot c${colors[s.key]}"></span><span class="sname">${esc(s.name)}</span><br><span class="skey">${esc(s.key).replace(":", ":<wbr>")}</span></td>
           <td><span class="temp ${s.value == null ? "na" : ""}">${fmtV(s.value, s.kind)}</span>${trendHtml}</td>
           <td>${chip(s.status)}</td>
           <td class="actions"><button class="srefresh" type="button" data-ep="${epIdx}" data-key="${esc(s.key)}" title="${esc(t("querySensor"))}" aria-label="${esc(t("querySensor"))}">↻</button></td></tr>`;
@@ -584,6 +597,9 @@ function bindTooltips() {
 }
 
 // --- boot -------------------------------------------------------------
+// PWA: relative path keeps the scope correct under any BASE_PATH (and
+// behind Home Assistant ingress).
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 (async () => {
   try {
     await loadLocales();

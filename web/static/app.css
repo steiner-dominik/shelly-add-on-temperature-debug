@@ -157,7 +157,13 @@ main { width: 100%; max-width: 1080px; margin: 0 auto; padding: 14px 20px 40px; 
 
 /* ---- toolbar ---- */
 .subtitle { color: var(--muted); font-size: .8rem; margin: 2px 0 10px; }
-.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
+/* Sticky below the top bar (whose height app.js mirrors into --topbar-h),
+   so the query button stays reachable while scrolling through the cards. */
+.toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  position: sticky; top: var(--topbar-h, 0px); z-index: 15;
+  background: var(--page); padding: 8px 0 10px; margin: -8px 0 6px;
+}
 .btn {
   font: inherit; font-size: .82rem; font-weight: 600;
   padding: 6px 13px; border-radius: 6px; cursor: pointer;
@@ -268,4 +274,17 @@ footer { border-top: 1px solid var(--border); background: var(--panel); margin-t
   .searchwrap { order: 3; flex-basis: 100%; max-width: none; }
   .searchwrap kbd { display: none; }
   .lastq { margin-left: 0; flex-basis: 100%; }
+  /* On phones the top bar (brand + search) is tall and matters less while
+     scrolling: let it scroll away and pin only the toolbar with the query
+     button, so as much of the sensor list as possible stays visible. */
+  .topbar { position: static; }
+  .toolbar { top: 0; }
+  /* Keep the sensor table inside the card: tighter paddings and no
+     unbreakable one-line cells, so the columns can shrink to the viewport
+     even when a status chip and a guidance row are shown. */
+  main { padding: 12px 12px 32px; }
+  .card { padding: 12px 12px 10px; }
+  table.sensors td, table.sensors th { padding: 6px 5px; }
+  .chip { white-space: normal; text-align: center; }
+  .temp { font-size: .95rem; }
 }

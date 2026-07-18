@@ -12,22 +12,37 @@ type Sample struct {
 	Status string   `json:"status"`
 }
 
+// bytesPerSample is the estimated in-memory cost of one Sample: 32 bytes in
+// the slice (int64 + pointer + string header), ~16 bytes for the heap float,
+// plus slack for slice growth. The status strings are shared constants and
+// cost nothing per sample. Deliberately conservative so HISTORY_MAX_MB is an
+// upper bound, not a target.
+const bytesPerSample = 64
+
 type sensorHistory struct {
 	Name    string   `json:"name"`
 	Kind    string   `json:"kind"`
 	Samples []Sample `json:"samples"`
 }
 
-// history is an in-memory ring buffer of samples per endpoint/sensor.
-// It is the only state the application holds; it is lost on restart by design.
+// history is an in-memory buffer of samples per endpoint/sensor with one
+// global memory budget: when the total sample count would exceed it, the
+// oldest sample across all sensors is dropped. It is the only state the
+// application holds; it is lost on restart by design.
 type history struct {
-	mu   sync.Mutex
-	size int
-	data map[string]map[string]*sensorHistory // endpoint name -> sensor key -> history
+	mu    sync.Mutex
+	max   int // total samples across all sensors (budget / bytesPerSample)
+	total int
+	data  map[string]map[string]*sensorHistory // endpoint name -> sensor key -> history
 }
 
-func newHistory(size int) *history {
-	return &history{size: size, data: map[string]map[string]*sensorHistory{}}
+// newHistory sizes the buffer from a byte budget shared by all sensors.
+func newHistory(maxBytes int64) *history {
+	max := int(maxBytes / bytesPerSample)
+	if max < 2 {
+		max = 2
+	}
+	return &history{max: max, data: map[string]map[string]*sensorHistory{}}
 }
 
 // record appends the sensors of one query result to the buffer.
@@ -49,7 +64,8 @@ func (h *history) recordSensor(endpoint string, s SensorResult, at time.Time) {
 	h.append(endpoint, s, at.Unix())
 }
 
-// append adds one sample; the caller must hold h.mu.
+// append adds one sample and evicts the oldest sample(s) overall while the
+// budget is exceeded; the caller must hold h.mu.
 func (h *history) append(endpoint string, s SensorResult, now int64) {
 	byKey := h.data[endpoint]
 	if byKey == nil {
@@ -64,9 +80,35 @@ func (h *history) append(endpoint string, s SensorResult, now int64) {
 	sh.Name = s.Name
 	sh.Kind = s.Kind
 	sh.Samples = append(sh.Samples, Sample{TS: now, V: s.Value, Status: s.Status})
-	if len(sh.Samples) > h.size {
-		sh.Samples = sh.Samples[len(sh.Samples)-h.size:]
+	h.total++
+	for h.total > h.max {
+		if !h.evictOldest() {
+			break
+		}
 	}
+}
+
+// evictOldest drops the single oldest sample across all sensors, so the
+// budget is spent on the most recent data no matter how it is distributed
+// between sensors. Returns false when there was nothing to evict.
+func (h *history) evictOldest() bool {
+	var victim *sensorHistory
+	for _, byKey := range h.data {
+		for _, sh := range byKey {
+			if len(sh.Samples) == 0 {
+				continue
+			}
+			if victim == nil || sh.Samples[0].TS < victim.Samples[0].TS {
+				victim = sh
+			}
+		}
+	}
+	if victim == nil {
+		return false
+	}
+	victim.Samples = victim.Samples[1:]
+	h.total--
+	return true
 }
 
 // clear drops all recorded samples.
@@ -74,6 +116,7 @@ func (h *history) clear() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.data = map[string]map[string]*sensorHistory{}
+	h.total = 0
 }
 
 // snapshot returns a deep copy safe for JSON serialization. limit > 0 keeps

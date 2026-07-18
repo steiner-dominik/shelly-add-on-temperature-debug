@@ -46,7 +46,8 @@ services:
       # ---- server (all optional, defaults shown) ----------------------
       # BASE_PATH: /debug                  # path prefix ("/" for root)
       # PORT: "8080"                       # listen port inside the container
-      # HISTORY_SIZE: "40000"              # in-memory samples kept per sensor (≈15 MB RAM at 8 sensors)
+      # HISTORY_MAX_MB: "16"               # total in-memory history budget (MB) shared by all sensors
+      # BACKGROUND_POLL_SECONDS: "0"       # >0: server polls the Shellys itself, history fills without an open page
       # QUERY_TIMEOUT_SECONDS: "5"         # per-device query timeout
       # QUERY_MIN_INTERVAL_SECONDS: "2"    # rate limit between real device queries
       # AUTO_REFRESH_SECONDS: "30"         # page auto-refresh interval

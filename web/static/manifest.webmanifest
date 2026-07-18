@@ -1,0 +1,16 @@
+{
+  "name": "Shelly Add-on Temperature Debug",
+  "short_name": "Shelly Temp",
+  "description": "Troubleshooting view for DS18B20 temperature and DHT22 humidity sensors on Shelly Sensor Add-ons",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

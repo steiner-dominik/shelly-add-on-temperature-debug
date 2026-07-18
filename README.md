@@ -5,6 +5,10 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Container](https://img.shields.io/badge/ghcr.io-container-blue)](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/pkgs/container/shelly-add-on-temperature-debug)
 
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-%E2%9D%A4-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/steiner-dominik)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-donate-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/dominik_steiner)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/dominik.st)
+
 A tiny, **stateless** web app that gives anyone a safe, instant
 troubleshooting view of the DS18B20 temperature sensors attached to one or
 more [Shelly Add-ons](https://www.shelly.com/products/shelly-plus-add-on)
@@ -52,6 +56,11 @@ plain-language guidance on what to check.
   cables and connectors — contact problems show up live in the graph
 - 🔁 **Auto-refresh** toggle (interval and on-by-default configurable via
   env, pauses in background tabs)
+- 🕙 **Background polling** (`BACKGROUND_POLL_SECONDS`): the server itself
+  queries the Shellys on an interval, so history charts are already
+  populated the moment someone opens the page
+- 📱 **Installable as a PWA** — pinned toolbar and a layout tuned for
+  phones make it a pocket sensor monitor
 - 📊 Optional **Prometheus `/metrics`** endpoint for long-term monitoring
 - 🌍 **Multi-language** (English, German — [add yours](docs/TRANSLATIONS.md)
   with a single JSON file)
@@ -95,6 +104,14 @@ docker run --rm -p 8080:8080 \
 Open <http://localhost:8080/debug> and enter the token (echo it first if you
 generated it inline). The browser remembers it across reloads.
 
+### Home Assistant
+
+The app is also available as a Home Assistant add-on from the
+[steiner-dominik/home-assistant-apps](https://github.com/steiner-dominik/home-assistant-apps)
+repository — one-click install, devices configured on the add-on's
+configuration page, opened via ingress from the sidebar (no token or port
+setup needed).
+
 ### docker-compose
 
 A fully commented [docker-compose.example.yml](deploy/docker-compose.example.yml)
@@ -125,7 +142,8 @@ contiguous and start at 1.
 | `DEBUG_TOKEN` | **yes** | – | Access token the API requires on every request (`X-Debug-Token` or `Authorization: Bearer` header). Entered once in the UI, stored by the browser. Never accepted as a URL parameter. Setting it **explicitly empty** (`DEBUG_TOKEN=`) disables authentication — only do that behind an authenticating reverse proxy |
 | `BASE_PATH` | no | `/debug` | Path prefix the app serves under (use `/` for root) |
 | `PORT` | no | `8080` | Listen port |
-| `HISTORY_SIZE` | no | `40000` | In-memory samples kept per sensor (~48 bytes each: 8 sensors × 40000 ≈ 15 MB RAM). Charts show the newest 1000; the CSV export contains everything |
+| `HISTORY_MAX_MB` | no | `16` | Total in-memory history budget in MB, shared by **all** sensors (~64 bytes per sample → 16 MB ≈ 260k samples). When full, the oldest samples across all sensors are dropped. Charts show the newest 1000 per sensor; the CSV export contains everything. Replaces the former per-sensor `HISTORY_SIZE`, which is ignored (with a startup warning) |
+| `BACKGROUND_POLL_SECONDS` | no | `0` | `> 0`: the server polls all Shellys itself on this interval (through the same rate-limited cache as the UI), so history exists before the first page view. `0` disables it — queries then only happen while somebody uses the page |
 | `QUERY_TIMEOUT_SECONDS` | no | `5` | Per-device query timeout |
 | `QUERY_MIN_INTERVAL_SECONDS` | no | `2` | Rate limit: minimum time between real device queries; faster requests get a shared cached result |
 | `AUTO_REFRESH_SECONDS` | no | `30` | Interval of the page's auto-refresh |
@@ -202,7 +220,7 @@ third-party runtime code at all**:
 | `golang:1.26-alpine` | `Dockerfile` (build stage only) | Compiler image; also the source of the CA bundle | Bump the tag (Dependabot PRs this) |
 | `scratch` | `Dockerfile` (runtime) | Empty base image — nothing to patch | – |
 | `actions/checkout`, `actions/setup-go`, `docker/*` actions | `.github/workflows/build.yml` | CI plumbing, not shipped in the image | Bump versions (Dependabot PRs this) |
-| Frontend | `web/static/` (`index.html`, `app.css`, `app.js`, `favicon.svg`) | Hand-written vanilla JS/CSS, no frameworks, no CDN loads | Edit the files |
+| Frontend | `web/static/` (`index.html`, `app.css`, `app.js`, `sw.js`, `manifest.webmanifest`, icons) | Hand-written vanilla JS/CSS, no frameworks, no CDN loads | Edit the files |
 
 [Dependabot is configured](.github/dependabot.yml) to open weekly PRs for the
 Go toolchain, the Docker base image, and the GitHub Actions. **If this repo
@@ -219,6 +237,7 @@ installed produces the identical single binary.
 | `{BASE_PATH}/api/query` | POST/GET | Query all Shellys live (rate-limited, cached), append to history, return results incl. status codes |
 | `{BASE_PATH}/api/query/sensor?ep={idx}&key={key}` | POST/GET | Query one single sensor (its `Temperature`/`Humidity.GetStatus` RPC); `ep` is the 0-based endpoint index, `key` e.g. `temperature:100` |
 | `{BASE_PATH}/api/history` | GET | The in-memory history buffer; `?limit=N` returns only the newest N samples per sensor (the page charts use `limit=1000`) |
+| `{BASE_PATH}/manifest.webmanifest`, `{BASE_PATH}/sw.js` | GET | PWA manifest and service worker (app shell only; API responses are never cached) |
 | `{BASE_PATH}/api/history` | DELETE | Clear the in-memory history |
 | `{BASE_PATH}/locales/index.json` | GET | Available languages |
 | `{BASE_PATH}/locales/{code}.json` | GET | Locale strings (labels + guidance) |
@@ -265,6 +284,14 @@ go run .
 # → http://localhost:8080/debug
 go test ./...
 ```
+
+## ❤️ Support
+
+If this project is useful to you, you can support its development:
+
+- [GitHub Sponsors](https://github.com/sponsors/steiner-dominik)
+- [Ko-fi](https://ko-fi.com/dominik_steiner)
+- [Buy Me a Coffee](https://buymeacoffee.com/dominik.st)
 
 ## License
 

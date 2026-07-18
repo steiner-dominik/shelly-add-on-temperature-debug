@@ -150,7 +150,7 @@ func TestRequireToken(t *testing.T) {
 }
 
 func TestHistoryClear(t *testing.T) {
-	h := newHistory(10)
+	h := newHistory(1 << 20)
 	h.record([]EndpointResult{{Name: "A", Sensors: []SensorResult{{Key: "temperature:100", Kind: "temperature", Name: "S", Value: f(20)}}}})
 	h.recordSensor("A", SensorResult{Key: "temperature:100", Kind: "temperature", Name: "S", Value: f(21)}, time.Now())
 	if got := len(h.snapshot(0)["A"]["temperature:100"].Samples); got != 2 {
