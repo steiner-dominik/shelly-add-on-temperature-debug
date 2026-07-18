@@ -13,8 +13,10 @@ What an anonymous visitor of the debug page can do, at worst:
   one real device query per `QUERY_MIN_INTERVAL_SECONDS`** (default 2 s);
   concurrent or rapid requests receive a shared cached result, so the page
   cannot be used to hammer the devices.
-- See temperature values, sensor names, device model/firmware, Wi-Fi RSSI and
-  uptime. If that is already too much, set `DEBUG_TOKEN`.
+- See temperature/humidity values, sensor names, device model/firmware,
+  Wi-Fi RSSI and uptime. If that is already too much, set `DEBUG_TOKEN`.
+  The same applies to `{BASE_PATH}/metrics` when `METRICS_ENABLED=true`
+  (disabled by default; honors `DEBUG_TOKEN` like the API).
 
 What a visitor can **never** get from this service:
 

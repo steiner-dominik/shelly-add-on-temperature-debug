@@ -32,11 +32,16 @@ plain-language guidance on what to check.
 - 🔒 **Server-side querying** — the browser never talks to the Shelly and
   never sees the password (RFC 7616 digest auth, SHA-256)
 - 📡 Works with Shelly **Gen2/Gen3/Gen4** devices (RPC API), multiple
-  sensors per device, multiple devices
+  sensors per device, multiple devices — **DS18B20** temperature and
+  **DHT22** humidity sensors
 - 🩺 **Failure classification with guidance**: OK · 85 °C reset · no
   reading · missing · unreachable · auth failed · no sensors
-- 📈 **In-memory history graph** (one point per button press) makes
-  intermittent failures visible
+- 📈 **In-memory history graph** (one point per query) makes intermittent
+  failures visible
+- 🔧 **Wiggle test**: polls every 2 s for 60 s while you physically re-seat
+  cables and connectors — contact problems show up live in the graph
+- 🔁 **Auto-refresh** toggle (every 30 s, pauses in background tabs)
+- 📊 Optional **Prometheus `/metrics`** endpoint for long-term monitoring
 - 🌍 **Multi-language** (English, German — [add yours](docs/TRANSLATIONS.md)
   with a single JSON file)
 - 🌗 **Dark / light / auto** theme, switchable on the page
@@ -114,6 +119,7 @@ contiguous and start at 1.
 | `HISTORY_SIZE` | no | `100` | In-memory samples kept per sensor |
 | `QUERY_TIMEOUT_SECONDS` | no | `5` | Per-device query timeout |
 | `QUERY_MIN_INTERVAL_SECONDS` | no | `2` | Rate limit: minimum time between real device queries; faster requests get a shared cached result |
+| `METRICS_ENABLED` | no | `false` | Set to `true` to expose Prometheus metrics at `{BASE_PATH}/metrics` |
 
 ## Reverse proxy
 
@@ -202,13 +208,37 @@ installed produces the identical single binary.
 | `{BASE_PATH}/api/history` | GET | The in-memory history buffer |
 | `{BASE_PATH}/locales/index.json` | GET | Available languages |
 | `{BASE_PATH}/locales/{code}.json` | GET | Locale strings (labels + guidance) |
+| `{BASE_PATH}/metrics` | GET | Prometheus metrics (only when `METRICS_ENABLED=true`) |
 | `/healthz` | GET | Liveness probe (no auth) |
 
-With `DEBUG_TOKEN` set, the two `/api/*` endpoints need the `X-Debug-Token`
-header or `?token=` query parameter. Machine-readable status codes (`ok`,
-`reset85`, `read_error`, `missing`, `unreachable`, `auth_failed`,
-`no_sensors`) are returned in the JSON; human-readable texts live in the
-locale files.
+With `DEBUG_TOKEN` set, the `/api/*` and `/metrics` endpoints need the
+`X-Debug-Token` header or `?token=` query parameter.
+
+### Prometheus
+
+With `METRICS_ENABLED=true`, each scrape returns the (rate-limited, cached)
+live readings as gauges:
+
+- `shelly_debug_temperature_celsius{endpoint,sensor,key}` /
+  `shelly_debug_humidity_percent{…}` — absent while a sensor gives no value
+- `shelly_debug_sensor_ok{endpoint,sensor,key,kind}` and a state-set
+  `shelly_debug_sensor_status{endpoint,key,status}` — alert on `sensor_ok == 0`
+- `shelly_debug_endpoint_up`, `shelly_debug_endpoint_wifi_rssi_dbm`,
+  `shelly_debug_endpoint_uptime_seconds`, `shelly_debug_last_query_timestamp_seconds`
+
+```yaml
+scrape_configs:
+  - job_name: shelly-debug
+    metrics_path: /debug/metrics
+    scrape_interval: 60s
+    static_configs: [{ targets: ["shelly-debug:8080"] }]
+    # with DEBUG_TOKEN set:
+    params: { token: ["<your token>"] }
+```
+
+Machine-readable status codes (`ok`, `reset85`, `read_error`, `missing`,
+`unreachable`, `auth_failed`, `no_sensors`) are returned in the JSON API and
+as metric labels; human-readable texts live in the locale files.
 
 ## Development
 

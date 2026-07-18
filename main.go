@@ -1,6 +1,7 @@
 // shelly-add-on-temperature-debug is a small, stateless web app that gives
-// people a safe troubleshooting view of DS18B20 temperature sensors attached
-// to Shelly Sensor Add-ons — without exposing the Shelly web UI or password.
+// people a safe troubleshooting view of DS18B20 temperature and DHT22
+// humidity sensors attached to Shelly Sensor Add-ons — without exposing the
+// Shelly web UI or password.
 package main
 
 import (
@@ -36,10 +37,10 @@ type server struct {
 
 	// last-result cache: device queries are rate-limited so an internet-facing
 	// page cannot be used to hammer the Shellys. Concurrent and rapid repeat
-	// requests share one result.
-	queryMu   chan struct{} // buffered(1), used as a mutex that respects ctx
-	lastAt    time.Time
-	lastReply []byte
+	// requests (including Prometheus scrapes) share one result.
+	queryMu     chan struct{} // buffered(1), used as a mutex that respects ctx
+	lastAt      time.Time
+	lastResults []EndpointResult
 }
 
 func main() {
@@ -78,6 +79,9 @@ func main() {
 	mux.HandleFunc(base+"/locales/{file}", serveLocale)
 	mux.HandleFunc(base+"/api/query", s.requireToken(s.handleQuery))
 	mux.HandleFunc(base+"/api/history", s.requireToken(s.handleHistory))
+	if cfg.Metrics {
+		mux.HandleFunc(base+"/metrics", s.requireToken(s.handleMetrics))
+	}
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -127,43 +131,54 @@ func (s *server) requireToken(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// queryCached performs a rate-limited device query: within MinInterval of the
+// previous query every caller (page button, auto-refresh, wiggle mode,
+// Prometheus scrape) shares the cached result. Returns ok=false when the
+// request was canceled while waiting its turn.
+func (s *server) queryCached(reqCtx context.Context) (results []EndpointResult, at time.Time, ok bool) {
+	select {
+	case s.queryMu <- struct{}{}:
+	case <-reqCtx.Done():
+		return nil, time.Time{}, false
+	}
+	defer func() { <-s.queryMu }()
+
+	if s.lastResults != nil && time.Since(s.lastAt) < s.cfg.MinInterval {
+		return s.lastResults, s.lastAt, true
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.Timeout+2*time.Second)
+	defer cancel()
+	s.lastResults = queryAll(ctx, s.cfg, s.meta)
+	s.lastAt = time.Now()
+	s.history.record(s.lastResults)
+	return s.lastResults, s.lastAt, true
+}
+
 func (s *server) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "use GET or POST"})
 		return
 	}
-
-	// Serialize queries; a caller whose request is canceled stops waiting.
-	select {
-	case s.queryMu <- struct{}{}:
-	case <-r.Context().Done():
+	results, at, ok := s.queryCached(r.Context())
+	if !ok {
 		return
 	}
-	defer func() { <-s.queryMu }()
-
-	// Within the rate-limit window, everyone gets the shared cached result.
-	if s.lastReply != nil && time.Since(s.lastAt) < s.cfg.MinInterval {
-		writeJSONRaw(w, s.lastReply)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.Timeout+2*time.Second)
-	defer cancel()
-	results := queryAll(ctx, s.cfg, s.meta)
-	s.history.record(results)
-
-	reply, err := json.Marshal(map[string]any{
-		"ts":        time.Now().Unix(),
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ts":        at.Unix(),
 		"version":   version,
 		"endpoints": results,
 	})
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+}
+
+func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	results, at, ok := s.queryCached(r.Context())
+	if !ok {
 		return
 	}
-	s.lastAt = time.Now()
-	s.lastReply = reply
-	writeJSONRaw(w, reply)
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(renderMetrics(results, at, version))
 }
 
 func (s *server) handleHistory(w http.ResponseWriter, _ *http.Request) {
@@ -227,10 +242,4 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
-}
-
-func writeJSONRaw(w http.ResponseWriter, data []byte) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Write(data)
 }

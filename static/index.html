@@ -67,18 +67,23 @@ h1 .logo { display: inline-flex; width: 34px; height: 34px; border-radius: 9px; 
 .prefs { display: flex; gap: 8px; align-items: center; margin-left: auto; }
 .prefs select { font: inherit; font-size: .84rem; padding: 5px 8px; border-radius: 7px;
   border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); }
-.toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0; }
-button.primary {
+.toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 6px; }
+button.primary, button.second {
   font: inherit; font-weight: 600; padding: 9px 18px; border-radius: 8px; cursor: pointer;
-  border: 1px solid var(--border); background: var(--text-primary); color: var(--page);
+  border: 1px solid var(--border);
 }
+button.primary { background: var(--text-primary); color: var(--page); }
 button.primary:disabled { opacity: .55; cursor: wait; }
+button.second { background: var(--surface-1); color: var(--text-primary); padding: 9px 14px; }
+button.second.active { border-color: var(--critical); color: var(--critical); }
+.auto { display: inline-flex; gap: 6px; align-items: center; color: var(--text-secondary); font-size: .85rem; cursor: pointer; user-select: none; }
 .lastq { color: var(--muted); font-size: .85rem; }
+.hint { color: var(--text-secondary); font-size: .85rem; margin: 0 0 12px; display: none; }
 .tokenbox { display: none; gap: 8px; align-items: center; flex-wrap: wrap;
   border: 1px solid var(--border); background: var(--surface-1); border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; }
 .tokenbox input { font: inherit; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--baseline); background: var(--page); color: var(--text-primary); min-width: 200px; }
 .tokenbox button { font: inherit; padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border); background: var(--text-primary); color: var(--page); cursor: pointer; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 12px 0 20px; }
 .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
 .tile .v { font-size: 1.7rem; font-weight: 700; line-height: 1.2; }
 .tile .l { color: var(--muted); font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
@@ -146,8 +151,11 @@ footer .meta { margin-top: 8px; }
 
   <div class="toolbar">
     <button class="primary" id="querybtn"></button>
+    <button class="second" id="wigglebtn"></button>
+    <label class="auto"><input type="checkbox" id="autorefresh"><span id="autolabel"></span></label>
     <span class="lastq" id="lastq"></span>
   </div>
+  <p class="hint" id="wigglehint"></p>
 
   <div class="tiles" id="tiles" style="display:none"></div>
 
@@ -171,6 +179,9 @@ const base = location.pathname.replace(/\/$/, "");
 const $ = id => document.getElementById(id);
 const SERIES = [1,2,3,4,5,6,7,8].map(i => `var(--series-${i})`);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const KINDS = ["temperature", "humidity"];
+const UNIT = { temperature: " °C", humidity: " %" };
+const AXIS_UNIT = { temperature: "°", humidity: "%" };
 
 // --- i18n -------------------------------------------------------------
 let L = null;         // active locale object
@@ -204,6 +215,9 @@ async function loadLocales() {
 function applyChrome() {
   $("subtitle").textContent = t("subtitle");
   $("querybtn").textContent = t("queryBtn");
+  updateWiggleBtn();
+  $("wigglehint").textContent = t("wiggleHint");
+  $("autolabel").textContent = t("autoRefresh");
   $("tokenprompt").textContent = t("tokenPrompt");
   $("tokeninput").placeholder = t("tokenPlaceholder");
   $("tokensave").textContent = t("unlock");
@@ -255,8 +269,10 @@ async function api(path, opts = {}) {
   return resp.json();
 }
 
-let lastData = null, lastHist = null;
+let lastData = null, lastHist = null, queryBusy = false;
 async function runQuery() {
+  if (queryBusy) return;
+  queryBusy = true;
   const btn = $("querybtn");
   btn.disabled = true; btn.textContent = t("querying");
   try {
@@ -267,16 +283,64 @@ async function runQuery() {
     $("lastq").textContent = fmt(t("lastQuery"), { time: new Date(data.ts * 1000).toLocaleTimeString() });
   } catch (e) {
     if (e && e.unauthorized) {
+      stopWiggle();
       $("tokenbox").style.display = "flex";
       $("results").innerHTML = `<p class="empty">${esc(t("locked"))}</p>`;
     } else {
       $("results").innerHTML = `<p class="empty">${esc(fmt(t("queryFailed"), { err: e.message || e }))}</p>`;
     }
   } finally {
+    queryBusy = false;
     btn.disabled = false; btn.textContent = t("queryBtn");
   }
 }
 $("querybtn").addEventListener("click", runQuery);
+
+// --- wiggle mode: poll rapidly for 60 s while cables are re-seated ---
+// The step stays above QUERY_MIN_INTERVAL_SECONDS (default 2 s) so every
+// poll is a real device query, not a cached result.
+const WIGGLE_MS = 60000, WIGGLE_STEP = 2500;
+let wiggleTimer = null, wiggleUntil = 0;
+function updateWiggleBtn() {
+  const btn = $("wigglebtn");
+  if (wiggleTimer) {
+    btn.textContent = fmt(t("wiggleRunning"), { s: Math.max(0, Math.ceil((wiggleUntil - Date.now()) / 1000)) });
+  } else {
+    btn.textContent = t("wiggleBtn");
+  }
+}
+function startWiggle() {
+  wiggleUntil = Date.now() + WIGGLE_MS;
+  $("wigglebtn").classList.add("active");
+  $("wigglehint").style.display = "block";
+  wiggleTimer = setInterval(() => {
+    if (Date.now() >= wiggleUntil) { stopWiggle(); return; }
+    updateWiggleBtn();
+    runQuery();
+  }, WIGGLE_STEP);
+  updateWiggleBtn();
+  runQuery();
+}
+function stopWiggle() {
+  if (wiggleTimer) clearInterval(wiggleTimer);
+  wiggleTimer = null;
+  $("wigglebtn").classList.remove("active");
+  $("wigglehint").style.display = "none";
+  updateWiggleBtn();
+}
+$("wigglebtn").addEventListener("click", () => wiggleTimer ? stopWiggle() : startWiggle());
+
+// --- auto-refresh (30 s), paused while the tab is hidden or wiggling ---
+const AUTO_MS = 30000;
+let autoTimer = null;
+function setAutoRefresh(on) {
+  localStorage.setItem("autoRefresh", on ? "1" : "0");
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+  if (on) autoTimer = setInterval(() => { if (!document.hidden && !wiggleTimer) runQuery(); }, AUTO_MS);
+}
+$("autorefresh").checked = localStorage.getItem("autoRefresh") === "1";
+$("autorefresh").addEventListener("change", e => setAutoRefresh(e.target.checked));
+setAutoRefresh($("autorefresh").checked);
 
 // --- rendering --------------------------------------------------------
 const CHIP = {
@@ -288,7 +352,20 @@ const chip = st => {
   const cls = CHIP[st] || "warn";
   return `<span class="chip ${cls}"><span aria-hidden="true">${ICON[cls]}</span>${esc(L.status[st] || st)}</span>`;
 };
-const fmtT = v => v == null ? "—" : v.toFixed(1) + " °C";
+const fmtV = (v, kind) => v == null ? "—" : v.toFixed(1) + (UNIT[kind] || "");
+const kindLabel = kind => kind === "humidity" ? t("kindHumidity") : t("kindTemperature");
+
+// Stable per-endpoint colors: sensors are numbered within their kind so each
+// chart starts at series-1 and the table dots match the chart lines.
+function colorMap(sensors) {
+  const m = {}, count = {};
+  sensors.forEach(s => {
+    const i = count[s.kind] || 0;
+    m[s.key] = SERIES[i % 8];
+    count[s.kind] = i + 1;
+  });
+  return m;
+}
 
 function renderTiles(data) {
   const eps = data.endpoints;
@@ -309,6 +386,8 @@ function render(data, hist) {
   renderTiles(data);
   const out = [];
   data.endpoints.forEach((ep, epIdx) => {
+    const colors = colorMap(ep.sensors);
+    const kindsPresent = KINDS.filter(k => ep.sensors.some(s => s.kind === k));
     const meta = [ep.device, ep.wifiRssi != null ? `${t("wifi")} ${ep.wifiRssi} dBm` : null,
       ep.uptimeSec != null ? `${t("uptime")} ${fmtUptime(ep.uptimeSec)}` : null].filter(Boolean).join(" · ");
     let body = "";
@@ -317,11 +396,12 @@ function render(data, hist) {
       body += `<div class="guide ${CHIP[ep.status] || "warn"}">${esc(g)}${ep.error ? `<br><span class="skey">${esc(ep.error)}</span>` : ""}</div>`;
     }
     if (ep.sensors.length) {
-      body += `<table class="sensors"><tr><th>${esc(t("colSensor"))}</th><th>${esc(t("colTemperature"))}</th><th>${esc(t("colStatus"))}</th></tr>`;
-      ep.sensors.forEach((s, i) => {
+      const valueHeader = kindsPresent.length > 1 ? t("colValue") : kindLabel(kindsPresent[0]);
+      body += `<table class="sensors"><tr><th>${esc(t("colSensor"))}</th><th>${esc(valueHeader)}</th><th>${esc(t("colStatus"))}</th></tr>`;
+      ep.sensors.forEach(s => {
         body += `<tr>
-          <td><span class="dot" style="background:${SERIES[i % 8]}"></span><span class="sname">${esc(s.name)}</span><br><span class="skey">${esc(s.key)}</span></td>
-          <td><span class="temp ${s.tC == null ? "na" : ""}">${fmtT(s.tC)}</span></td>
+          <td><span class="dot" style="background:${colors[s.key]}"></span><span class="sname">${esc(s.name)}</span><br><span class="skey">${esc(s.key)}</span></td>
+          <td><span class="temp ${s.value == null ? "na" : ""}">${fmtV(s.value, s.kind)}</span></td>
           <td>${chip(s.status)}</td></tr>`;
         const g = (L.guidance.sensor || {})[s.status];
         if (g) body += `<tr><td colspan="3" style="border-top:none;padding-top:0"><div class="guide ${CHIP[s.status]}">${esc(g)}</div></td></tr>`;
@@ -331,7 +411,9 @@ function render(data, hist) {
     if (ep.wifiRssi != null && ep.wifiRssi <= -75) {
       body += `<p class="note">ℹ️ ${esc(fmt(t("wifiWeak"), { rssi: ep.wifiRssi }))}</p>`;
     }
-    body += chartFor(ep, (hist.endpoints || {})[ep.name] || {}, epIdx);
+    kindsPresent.forEach(kind => {
+      body += chartFor(ep, (hist.endpoints || {})[ep.name] || {}, epIdx, kind, colors, kindsPresent.length > 1);
+    });
     out.push(`<div class="card">
       <div class="ephead"><h2>${esc(ep.name)}</h2><span class="ephost">${esc(ep.host)}</span>${chip(ep.status)}</div>
       ${meta ? `<div class="epmeta">${esc(meta)}</div>` : ""}${body}</div>`);
@@ -344,21 +426,25 @@ const fmtUptime = s => s >= 86400 ? Math.floor(s / 86400) + "d " + Math.floor(s 
   : s >= 3600 ? Math.floor(s / 3600) + "h " + Math.floor(s % 3600 / 60) + "m" : Math.floor(s / 60) + "m";
 const fmtClock = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-// One line chart per endpoint: x = query time, y = °C, one series per sensor.
-// Failed reads (tC null) break the line and are marked with an ✕ under the plot.
-const chartData = {}; // epIdx -> {tsList, series} for tooltip lookup
-function chartFor(ep, histSensors, epIdx) {
-  const keys = ep.sensors.map(s => s.key).filter(k => histSensors[k]);
-  const series = keys.map((k, i) => ({ key: k, name: histSensors[k].name, color: SERIES[i % 8], byTs: new Map(histSensors[k].samples.map(sm => [sm.ts, sm])) }));
+// One line chart per endpoint and sensor kind: x = query time, y = value.
+// Failed reads (v null) break the line and are marked with an ✕ under the plot.
+const chartData = {}; // chartId -> {tsList, series} for tooltip lookup
+function chartFor(ep, histSensors, epIdx, kind, colors, titledKind) {
+  const sensors = ep.sensors.filter(s => s.kind === kind && histSensors[s.key]);
+  const series = sensors.map(s => ({
+    key: s.key, name: histSensors[s.key].name, kind, color: colors[s.key],
+    byTs: new Map(histSensors[s.key].samples.map(sm => [sm.ts, sm])),
+  }));
   const tsSet = new Set();
   series.forEach(s => s.byTs.forEach((_, ts) => tsSet.add(ts)));
   const tsList = [...tsSet].sort((a, b) => a - b);
   if (!tsList.length) return "";
-  chartData[epIdx] = { tsList, series };
+  const chartId = epIdx + ":" + kind;
+  chartData[chartId] = { tsList, series };
 
   const W = 820, H = 180, padL = 44, padR = 10, padT = 10, padB = 26;
   const values = [];
-  series.forEach(s => s.byTs.forEach(sm => { if (sm.tC != null) values.push(sm.tC); }));
+  series.forEach(s => s.byTs.forEach(sm => { if (sm.v != null) values.push(sm.v); }));
   let lo = values.length ? Math.min(...values) : 0, hi = values.length ? Math.max(...values) : 1;
   if (hi - lo < 2) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
   const span = hi - lo; lo -= span * 0.08; hi += span * 0.08;
@@ -370,7 +456,7 @@ function chartFor(ep, histSensors, epIdx) {
   for (let i = 0; i <= 2; i++) {
     const v = lo + (hi - lo) * i / 2, yy = y(v);
     g += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="var(--grid)" stroke-width="1"/>`;
-    g += `<text x="${padL - 6}" y="${yy + 4}" text-anchor="end">${v.toFixed(1)}°</text>`;
+    g += `<text x="${padL - 6}" y="${yy + 4}" text-anchor="end">${v.toFixed(1)}${AXIS_UNIT[kind] || ""}</text>`;
   }
   g += `<text x="${padL}" y="${H - 8}">${fmtClock(t0)}</text>`;
   if (t1 !== t0) g += `<text x="${W - padR}" y="${H - 8}" text-anchor="end">${fmtClock(t1)}</text>`;
@@ -379,8 +465,8 @@ function chartFor(ep, histSensors, epIdx) {
     let path = "", pen = false;
     tsList.forEach(ts => {
       const sm = s.byTs.get(ts);
-      if (sm && sm.tC != null) {
-        path += (pen ? "L" : "M") + x(ts).toFixed(1) + " " + y(sm.tC).toFixed(1) + " ";
+      if (sm && sm.v != null) {
+        path += (pen ? "L" : "M") + x(ts).toFixed(1) + " " + y(sm.v).toFixed(1) + " ";
         pen = true;
       } else if (sm) {
         // failed read: break the line, mark the failure
@@ -391,18 +477,19 @@ function chartFor(ep, histSensors, epIdx) {
     if (path) g += `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
     tsList.forEach(ts => {
       const sm = s.byTs.get(ts);
-      if (sm && sm.tC != null) g += `<circle cx="${x(ts).toFixed(1)}" cy="${y(sm.tC).toFixed(1)}" r="2.5" fill="${s.color}"/>`;
+      if (sm && sm.v != null) g += `<circle cx="${x(ts).toFixed(1)}" cy="${y(sm.v).toFixed(1)}" r="2.5" fill="${s.color}"/>`;
     });
   });
 
   const legend = series.map(s => {
     const last = [...s.byTs.values()].pop();
-    return `<span><span class="dot" style="background:${s.color}"></span>${esc(s.name)}&nbsp;<b>${fmtT(last ? last.tC : null)}</b></span>`;
+    return `<span><span class="dot" style="background:${s.color}"></span>${esc(s.name)}&nbsp;<b>${fmtV(last ? last.v : null, kind)}</b></span>`;
   }).join("");
 
-  const title = fmt(t("history"), { n: tsList.length, queries: tsList.length === 1 ? t("queryOne") : t("queryOther") });
+  let title = fmt(t("history"), { n: tsList.length, queries: tsList.length === 1 ? t("queryOne") : t("queryOther") });
+  if (titledKind) title = kindLabel(kind) + " · " + title;
   return `<div class="chartwrap"><div class="charttitle">${esc(title)}</div>
-    <svg class="chart" viewBox="0 0 ${W} ${H}" data-ep="${epIdx}" preserveAspectRatio="none">
+    <svg class="chart" viewBox="0 0 ${W} ${H}" data-chart="${esc(chartId)}" preserveAspectRatio="none">
       <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="var(--baseline)" stroke-width="1"/>
       ${g}
       <line class="xh" x1="0" y1="${padT}" x2="0" y2="${H - padB}" stroke="var(--baseline)" stroke-width="1" style="display:none"/>
@@ -413,7 +500,7 @@ function chartFor(ep, histSensors, epIdx) {
 function bindTooltips() {
   const tt = $("tooltip");
   document.querySelectorAll("svg.chart").forEach(svg => {
-    const { tsList, series } = chartData[svg.dataset.ep] || {};
+    const { tsList, series } = chartData[svg.dataset.chart] || {};
     if (!tsList) return;
     const W = 820, padL = 44, padR = 10;
     const t0 = tsList[0], t1 = tsList[tsList.length - 1];
@@ -431,7 +518,7 @@ function bindTooltips() {
       series.forEach(s => {
         const sm = s.byTs.get(best);
         if (!sm) return;
-        rows += `<div class="tt-row"><span class="dot" style="background:${s.color}"></span>${esc(s.name)}<span class="tt-val">${sm.tC == null ? esc(L.status[sm.status] || "—") : fmtT(sm.tC)}</span></div>`;
+        rows += `<div class="tt-row"><span class="dot" style="background:${s.color}"></span>${esc(s.name)}<span class="tt-val">${sm.v == null ? esc(L.status[sm.status] || "—") : fmtV(sm.v, s.kind)}</span></div>`;
       });
       tt.innerHTML = `<div class="tt-time">${fmtClock(best)}</div>` + rows;
       tt.style.display = "block";

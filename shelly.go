@@ -169,7 +169,7 @@ type deviceMeta struct {
 	Gen         int
 	Firmware    string
 	DeviceName  string
-	SensorNames map[string]string // "temperature:100" -> configured name
+	SensorNames map[string]string // "temperature:100" / "humidity:100" -> configured name
 	fetched     time.Time
 }
 
@@ -215,7 +215,7 @@ func (mc *metaCache) get(ctx context.Context, c *shellyClient, key string) *devi
 		var comps map[string]json.RawMessage
 		if json.Unmarshal(raw, &comps) == nil {
 			for k, v := range comps {
-				if !strings.HasPrefix(k, "temperature:") {
+				if _, _, isSensor := splitComponentKey(k); !isSensor {
 					continue
 				}
 				var tc struct {

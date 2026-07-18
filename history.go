@@ -8,12 +8,13 @@ import (
 // Sample is one recorded reading of one sensor.
 type Sample struct {
 	TS     int64    `json:"ts"` // unix seconds
-	TC     *float64 `json:"tC"`
+	V      *float64 `json:"v"`  // °C or %RH depending on the sensor kind
 	Status string   `json:"status"`
 }
 
 type sensorHistory struct {
 	Name    string   `json:"name"`
+	Kind    string   `json:"kind"`
 	Samples []Sample `json:"samples"`
 }
 
@@ -47,7 +48,8 @@ func (h *history) record(results []EndpointResult) {
 				byKey[s.Key] = sh
 			}
 			sh.Name = s.Name
-			sh.Samples = append(sh.Samples, Sample{TS: now, TC: s.TC, Status: s.Status})
+			sh.Kind = s.Kind
+			sh.Samples = append(sh.Samples, Sample{TS: now, V: s.Value, Status: s.Status})
 			if len(sh.Samples) > h.size {
 				sh.Samples = sh.Samples[len(sh.Samples)-h.size:]
 			}
@@ -65,7 +67,7 @@ func (h *history) snapshot() map[string]map[string]sensorHistory {
 		for key, sh := range byKey {
 			samples := make([]Sample, len(sh.Samples))
 			copy(samples, sh.Samples)
-			m[key] = sensorHistory{Name: sh.Name, Samples: samples}
+			m[key] = sensorHistory{Name: sh.Name, Kind: sh.Kind, Samples: samples}
 		}
 		out[ep] = m
 	}

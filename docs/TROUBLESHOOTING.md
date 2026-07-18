@@ -44,9 +44,11 @@ device.
   that sensor's own wire, splice, or the sensor itself.
 - **All sensors on the device fail at once** → shared cause: the add-on board,
   the common bus wiring, or the first shared cable segment.
-- If a sensor toggles between OK and failing across repeated queries (use the
-  button a few times and watch the graph), it's a contact/marginal-signal
-  problem, not a dead sensor.
+- If a sensor toggles between OK and failing across repeated queries, it's a
+  contact/marginal-signal problem, not a dead sensor. Use the **wiggle test**
+  button: it polls every 2 seconds for a minute — physically wiggle the
+  cables, connectors and terminals while watching the graph; the moment the
+  contact opens you'll see a gap or ✕ mark appear.
 
 ### 3. Missing — configured but not detected
 

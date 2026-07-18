@@ -7,20 +7,23 @@ func f(v float64) *float64 { return &v }
 func TestClassifySensor(t *testing.T) {
 	cases := []struct {
 		name    string
-		tC      *float64
+		kind    string
+		v       *float64
 		errs    []string
 		missing bool
 		want    string
 	}{
-		{"normal reading", f(21.5), nil, false, statusOK},
-		{"real 85.1 is ok", f(85.1), nil, false, statusOK},
-		{"exact 85 is reset", f(85.0), nil, false, statusReset85},
-		{"nil reading", nil, nil, false, statusReadError},
-		{"read error", f(20.0), []string{"read"}, false, statusReadError},
-		{"missing", nil, nil, true, statusMissing},
+		{"normal reading", "temperature", f(21.5), nil, false, statusOK},
+		{"real 85.1 is ok", "temperature", f(85.1), nil, false, statusOK},
+		{"exact 85 is reset", "temperature", f(85.0), nil, false, statusReset85},
+		{"85 %RH is a normal humidity", "humidity", f(85.0), nil, false, statusOK},
+		{"nil reading", "temperature", nil, nil, false, statusReadError},
+		{"humidity nil reading", "humidity", nil, nil, false, statusReadError},
+		{"read error", "temperature", f(20.0), []string{"read"}, false, statusReadError},
+		{"missing", "temperature", nil, nil, true, statusMissing},
 	}
 	for _, c := range cases {
-		if got := classifySensor(c.tC, c.errs, c.missing); got != c.want {
+		if got := classifySensor(c.kind, c.v, c.errs, c.missing); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
 	}

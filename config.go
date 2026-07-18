@@ -25,6 +25,7 @@ type Config struct {
 	HistorySize int
 	Timeout     time.Duration
 	MinInterval time.Duration // device queries are rate-limited to one per this interval
+	Metrics     bool          // expose Prometheus metrics at {BASE_PATH}/metrics
 	Endpoints   []EndpointConfig
 }
 
@@ -65,6 +66,7 @@ func loadConfig() (*Config, error) {
 		HistorySize: histSize,
 		Timeout:     time.Duration(timeoutSec) * time.Second,
 		MinInterval: time.Duration(minIntervalSec) * time.Second,
+		Metrics:     getenv("METRICS_ENABLED", "false") == "true" || os.Getenv("METRICS_ENABLED") == "1",
 	}
 
 	globalPW := os.Getenv("SHELLY_PASSWORD")

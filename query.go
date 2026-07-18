@@ -23,12 +23,20 @@ const (
 	statusNoSensors   = "no_sensors"
 )
 
-// SensorResult is the live reading of one DS18B20 sensor.
+// Sensor kinds supported on the add-on. The map value is the JSON field
+// holding the reading in the device status.
+var sensorKinds = map[string]string{
+	"temperature": "tC", // DS18B20
+	"humidity":    "rh", // DHT22
+}
+
+// SensorResult is the live reading of one add-on sensor.
 type SensorResult struct {
 	Key    string   `json:"key"` // e.g. "temperature:100"
 	ID     int      `json:"id"`
+	Kind   string   `json:"kind"` // "temperature" | "humidity"
 	Name   string   `json:"name"`
-	TC     *float64 `json:"tC"` // nil when the sensor gave no reading
+	Value  *float64 `json:"value"` // °C or %RH; nil when the sensor gave no reading
 	Errors []string `json:"errors,omitempty"`
 	Status string   `json:"status"`
 }
@@ -45,17 +53,29 @@ type EndpointResult struct {
 	Sensors  []SensorResult `json:"sensors"`
 }
 
-func classifySensor(tC *float64, errs []string, missing bool) string {
+func classifySensor(kind string, v *float64, errs []string, missing bool) string {
 	switch {
 	case missing:
 		return statusMissing
-	case len(errs) > 0 || tC == nil:
+	case len(errs) > 0 || v == nil:
 		return statusReadError
-	case *tC == 85.0:
+	case kind == "temperature" && *v == 85.0:
 		return statusReset85
 	default:
 		return statusOK
 	}
+}
+
+// splitComponentKey parses "temperature:101" into a supported kind and id.
+func splitComponentKey(key string) (kind string, id int, ok bool) {
+	kind, idStr, found := strings.Cut(key, ":")
+	if !found || sensorKinds[kind] == "" {
+		return "", 0, false
+	}
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		return "", 0, false
+	}
+	return kind, id, true
 }
 
 func queryEndpoint(ctx context.Context, ep EndpointConfig, timeout time.Duration, meta *metaCache) EndpointResult {
@@ -90,38 +110,47 @@ func queryEndpoint(ctx context.Context, ep EndpointConfig, timeout time.Duration
 
 	// Add-on peripherals get component IDs starting at 100; the device's
 	// internal temperature lives elsewhere (switch:*), so this only sees
-	// the external DS18B20 sensors.
+	// external sensors.
 	present := map[string]bool{}
 	for key, v := range comps {
-		if !strings.HasPrefix(key, "temperature:") {
+		kind, id, ok := splitComponentKey(key)
+		if !ok || id < 100 {
 			continue
 		}
-		var t struct {
-			ID     int      `json:"id"`
-			TC     *float64 `json:"tC"`
-			Errors []string `json:"errors"`
-		}
-		if err := json.Unmarshal(v, &t); err != nil || t.ID < 100 {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(v, &fields) != nil {
 			continue
 		}
+		var value *float64
+		json.Unmarshal(fields[sensorKinds[kind]], &value)
+		var errs []string
+		json.Unmarshal(fields["errors"], &errs)
 		present[key] = true
 		res.Sensors = append(res.Sensors, SensorResult{
-			Key: key, ID: t.ID, Name: sensorName(dm, key, t.ID),
-			TC: t.TC, Errors: t.Errors, Status: classifySensor(t.TC, t.Errors, false),
+			Key: key, ID: id, Kind: kind, Name: sensorName(dm, key, id),
+			Value: value, Errors: errs, Status: classifySensor(kind, value, errs, false),
 		})
 	}
 	// Sensors that are configured but absent from the live status.
 	for key := range dm.SensorNames {
-		var id int
-		if _, err := fmt.Sscanf(key, "temperature:%d", &id); err != nil || id < 100 || present[key] {
+		kind, id, ok := splitComponentKey(key)
+		if !ok || id < 100 || present[key] {
 			continue
 		}
 		res.Sensors = append(res.Sensors, SensorResult{
-			Key: key, ID: id, Name: sensorName(dm, key, id),
-			Status: classifySensor(nil, nil, true),
+			Key: key, ID: id, Kind: kind, Name: sensorName(dm, key, id),
+			Status: classifySensor(kind, nil, nil, true),
 		})
 	}
-	sort.Slice(res.Sensors, func(i, j int) bool { return res.Sensors[i].ID < res.Sensors[j].ID })
+	// Temperature sensors first (the primary use case), then humidity.
+	kindOrder := map[string]int{"temperature": 0, "humidity": 1}
+	sort.Slice(res.Sensors, func(i, j int) bool {
+		a, b := res.Sensors[i], res.Sensors[j]
+		if a.Kind != b.Kind {
+			return kindOrder[a.Kind] < kindOrder[b.Kind]
+		}
+		return a.ID < b.ID
+	})
 
 	var sys struct {
 		Sys struct {
