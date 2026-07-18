@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -23,6 +23,16 @@ func fakeShelly() *httptest.Server {
 			"temperature:102": {"id":102, "tC": 22.0},
 			"humidity:102": {"id":102, "rh": 55.5}
 		}`))
+	})
+	mux.HandleFunc("/rpc/Temperature.GetStatus", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("id") {
+		case "100":
+			w.Write([]byte(`{"id":100, "tC": 21.5, "tF": 70.7}`))
+		case "101":
+			w.Write([]byte(`{"id":101, "tC": null, "errors": ["read"]}`))
+		default:
+			http.Error(w, `{"code":-105,"message":"no such component"}`, http.StatusInternalServerError)
+		}
 	})
 	mux.HandleFunc("/rpc/Shelly.GetDeviceInfo", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(`{"name":"fake","model":"TEST-1","gen":3,"ver":"9.9.9","app":"Test"}`))
@@ -78,6 +88,83 @@ func TestQueryEndpointWithHumidityAndMissing(t *testing.T) {
 	}
 	if res.Sensors[len(res.Sensors)-1].Name != "DHT humidity" {
 		t.Errorf("configured humidity name not used: %+v", res.Sensors[len(res.Sensors)-1])
+	}
+}
+
+func TestQuerySensor(t *testing.T) {
+	srv := fakeShelly()
+	defer srv.Close()
+	ep := EndpointConfig{Name: "Fake", BaseURL: srv.URL, Host: "fake", User: "admin"}
+	meta := newMetaCache()
+
+	res := querySensor(context.Background(), ep, 3*time.Second, meta, "temperature:100")
+	if res.Status != statusOK || res.Value == nil || *res.Value != 21.5 || res.Name != "Pool" {
+		t.Errorf("healthy sensor: %+v", res)
+	}
+	res = querySensor(context.Background(), ep, 3*time.Second, meta, "temperature:101")
+	if res.Status != statusReadError || res.Value != nil {
+		t.Errorf("failing sensor: %+v", res)
+	}
+	res = querySensor(context.Background(), ep, 3*time.Second, meta, "temperature:199")
+	if res.Status != statusReadError || len(res.Errors) == 0 {
+		t.Errorf("unknown sensor should surface an error: %+v", res)
+	}
+}
+
+func TestRequireToken(t *testing.T) {
+	s := &server{cfg: &Config{Token: "secret"}}
+	h := s.requireToken(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	cases := []struct {
+		name   string
+		header map[string]string
+		url    string
+		want   int
+	}{
+		{"no token", nil, "/api/query", http.StatusUnauthorized},
+		{"header token", map[string]string{"X-Debug-Token": "secret"}, "/api/query", http.StatusOK},
+		{"bearer token", map[string]string{"Authorization": "Bearer secret"}, "/api/query", http.StatusOK},
+		{"wrong header token", map[string]string{"X-Debug-Token": "nope"}, "/api/query", http.StatusUnauthorized},
+		{"URL parameter is never accepted", nil, "/api/query?token=secret", http.StatusUnauthorized},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest(http.MethodGet, c.url, nil)
+		for k, v := range c.header {
+			r.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		h(w, r)
+		if w.Code != c.want {
+			t.Errorf("%s: got %d, want %d", c.name, w.Code, c.want)
+		}
+	}
+
+	// Explicitly empty token disables the gate entirely.
+	open := &server{cfg: &Config{Token: ""}}
+	oh := open.requireToken(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	w := httptest.NewRecorder()
+	oh(w, httptest.NewRequest(http.MethodGet, "/api/query", nil))
+	if w.Code != http.StatusOK {
+		t.Errorf("empty token config: got %d, want 200", w.Code)
+	}
+}
+
+func TestHistoryClear(t *testing.T) {
+	h := newHistory(10)
+	h.record([]EndpointResult{{Name: "A", Sensors: []SensorResult{{Key: "temperature:100", Kind: "temperature", Name: "S", Value: f(20)}}}})
+	h.recordSensor("A", SensorResult{Key: "temperature:100", Kind: "temperature", Name: "S", Value: f(21)}, time.Now())
+	if got := len(h.snapshot(0)["A"]["temperature:100"].Samples); got != 2 {
+		t.Fatalf("got %d samples, want 2", got)
+	}
+	if got := len(h.snapshot(1)["A"]["temperature:100"].Samples); got != 1 {
+		t.Fatalf("limited snapshot: got %d samples, want 1", got)
+	}
+	if v := h.snapshot(1)["A"]["temperature:100"].Samples[0].V; v == nil || *v != 21 {
+		t.Fatalf("limited snapshot must keep the newest sample, got %+v", v)
+	}
+	h.clear()
+	if len(h.snapshot(0)) != 0 {
+		t.Fatal("history not empty after clear")
 	}
 }
 

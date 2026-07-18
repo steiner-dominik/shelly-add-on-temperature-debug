@@ -1,0 +1,57 @@
+# Shelly Add-on Temperature Debug — example docker-compose
+#
+# Quick start:
+#   1. Download this file and env.example next to it:
+#        curl -LO https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases/latest/download/docker-compose.example.yml
+#        curl -LO https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases/latest/download/env.example
+#   2. cp env.example .env    # then edit .env (hosts, passwords, token)
+#   3. mv docker-compose.example.yml docker-compose.yml
+#   4. docker compose up -d
+#   5. Open http://localhost:8080/debug and enter your DEBUG_TOKEN.
+#
+# The app is stateless: no volumes, nothing written to disk. All
+# configuration is environment variables; secrets belong in .env (never
+# commit that file).
+
+services:
+  shelly-debug:
+    image: ghcr.io/steiner-dominik/shelly-add-on-temperature-debug:latest
+    # Pin a CalVer tag in production so "latest" can't move under you, e.g.:
+    # image: ghcr.io/steiner-dominik/shelly-add-on-temperature-debug:2026.07.17
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # ---- access control (REQUIRED) ----------------------------------
+      # Pick a long random value (e.g. `openssl rand -hex 24`) and share it
+      # with the people who may use the page. It is entered once in the
+      # browser and remembered. Setting it EXPLICITLY EMPTY ("") disables
+      # authentication — only do that when your reverse proxy handles auth.
+      DEBUG_TOKEN: ${DEBUG_TOKEN}
+
+      # ---- Shelly devices (at least SHELLY_1_HOST is REQUIRED) --------
+      # Numbering must be contiguous and start at 1.
+      SHELLY_1_HOST: ${SHELLY_1_HOST}            # IP or FQDN, http:// assumed
+      SHELLY_1_NAME: ${SHELLY_1_NAME:-}          # display name (default: host)
+      # SHELLY_1_PASSWORD: ${SHELLY_1_PASSWORD}  # per-device password override
+      # SHELLY_1_USER: admin                     # Gen2+ is always "admin"
+
+      # SHELLY_2_HOST: 192.168.1.51
+      # SHELLY_2_NAME: Garden
+      # SHELLY_2_PASSWORD: ${SHELLY_2_PASSWORD}
+
+      # Fallback device password for every endpoint without its own:
+      SHELLY_PASSWORD: ${SHELLY_PASSWORD:-}
+
+      # ---- server (all optional, defaults shown) ----------------------
+      # BASE_PATH: /debug                  # path prefix ("/" for root)
+      # PORT: "8080"                       # listen port inside the container
+      # HISTORY_SIZE: "40000"              # in-memory samples kept per sensor (≈15 MB RAM at 8 sensors)
+      # QUERY_TIMEOUT_SECONDS: "5"         # per-device query timeout
+      # QUERY_MIN_INTERVAL_SECONDS: "2"    # rate limit between real device queries
+      # AUTO_REFRESH_SECONDS: "30"         # page auto-refresh interval
+      # AUTO_REFRESH_DEFAULT: "false"      # "true" starts auto-refresh enabled for new browsers
+      # METRICS_ENABLED: "false"           # "true" exposes Prometheus /debug/metrics
+
+    # Liveness: GET /healthz (no auth). The scratch image contains no shell
+    # or curl, so probe it from outside (reverse proxy, uptime monitor, k8s).

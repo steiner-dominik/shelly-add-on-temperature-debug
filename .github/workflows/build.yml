@@ -100,7 +100,7 @@ jobs:
           V="${{ steps.ver.outputs.version }}"
           git tag "$V" "${{ github.sha }}"
           git push origin "refs/tags/$V"
-          gh release create "$V" dist/* \
+          gh release create "$V" dist/* deploy/docker-compose.example.yml deploy/env.example \
             --title "$V" \
             --generate-notes \
-            --notes "Container image: \`ghcr.io/${{ github.repository }}:$V\` (linux/amd64 + linux/arm64)"
+            --notes "Container image: \`ghcr.io/${{ github.repository }}:$V\` (linux/amd64 + linux/arm64). Quick start: download \`docker-compose.example.yml\` + \`env.example\` below."

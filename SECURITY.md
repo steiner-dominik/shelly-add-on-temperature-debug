@@ -6,17 +6,23 @@ it does **not** protect against.
 
 ## Threat model
 
-What an anonymous visitor of the debug page can do, at worst:
+The API is **never served without authentication**: every `/api/*` and
+`/metrics` request must present the mandatory `DEBUG_TOKEN` (as an
+`X-Debug-Token` or `Authorization: Bearer` header — URL parameters are not
+accepted, so the token cannot leak into proxy/access logs or browser
+history). An anonymous visitor only receives the static HTML shell, which
+contains no data.
+
+What a **token holder** can do, at worst:
 
 - Trigger read-only RPC queries (`Shelly.GetStatus`, `Shelly.GetConfig`,
-  `Shelly.GetDeviceInfo`) against your configured Shellys — **rate-limited to
-  one real device query per `QUERY_MIN_INTERVAL_SECONDS`** (default 2 s);
-  concurrent or rapid requests receive a shared cached result, so the page
-  cannot be used to hammer the devices.
+  `Shelly.GetDeviceInfo`, and per-sensor `Temperature`/`Humidity.GetStatus`)
+  against your configured Shellys — **rate-limited to one real device query
+  per `QUERY_MIN_INTERVAL_SECONDS`** (default 2 s); concurrent or rapid
+  requests receive a shared cached result, so the page cannot be used to
+  hammer the devices.
 - See temperature/humidity values, sensor names, device model/firmware,
-  Wi-Fi RSSI and uptime. If that is already too much, set `DEBUG_TOKEN`.
-  The same applies to `{BASE_PATH}/metrics` when `METRICS_ENABLED=true`
-  (disabled by default; honors `DEBUG_TOKEN` like the API).
+  Wi-Fi RSSI and uptime, and clear the in-memory history buffer.
 
 What a visitor can **never** get from this service:
 
@@ -35,17 +41,18 @@ What a visitor can **never** get from this service:
 | Server-side querying | The browser never talks to a Shelly; devices need no internet exposure |
 | Digest auth | RFC 7616 (SHA-256, with MD5 fallback) — credentials never travel in plaintext |
 | Rate limiting + result cache | One device query per interval, shared across all visitors; concurrent requests are serialized |
-| Optional access token | `DEBUG_TOKEN` gates the API (constant-time comparison); token can be delivered as a one-time URL parameter and is then stored client-side |
-| Security headers | Restrictive `Content-Security-Policy` (no external sources, no framing), `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy: no-referrer` |
+| Mandatory access token | `DEBUG_TOKEN` gates the entire API (constant-time comparison); accepted only via `X-Debug-Token` or `Authorization: Bearer` headers, never as a URL parameter. Explicitly setting it empty disables the gate — an intentional opt-out for proxy-side auth, never a silent default |
+| Security headers | Restrictive `Content-Security-Policy` (no external sources, no inline scripts/styles, no framing), `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy: no-referrer` |
 | Minimal image | `FROM scratch`, one static binary, runs as user 65534, no shell, no package manager |
 | No third-party code | Go standard library only; the page loads zero external scripts/fonts/CDNs |
 | Response caps | Device responses are size-limited; server read/write timeouts are set |
 
 ## Your responsibilities when hosting
 
-1. **Terminate TLS** at your reverse proxy — the app itself speaks plain HTTP.
-2. **Set `DEBUG_TOKEN`** (or protect the path at the proxy) if sensor data or
-   query capability should not be public.
+1. **Terminate TLS** at your reverse proxy — the app itself speaks plain
+   HTTP, and the token would otherwise travel unencrypted.
+2. **Pick a strong `DEBUG_TOKEN`** (e.g. `openssl rand -hex 24`) and share
+   it only with the people who should use the page.
 3. The Shelly ↔ container traffic is HTTP on your LAN. Digest auth protects
    the password, but readings travel unencrypted on that network segment —
    keep it a trusted network (IoT VLAN).

@@ -31,16 +31,27 @@ plain-language guidance on what to check.
 
 - 🔒 **Server-side querying** — the browser never talks to the Shelly and
   never sees the password (RFC 7616 digest auth, SHA-256)
+- 🔑 **Mandatory access token** (`DEBUG_TOKEN`) — the API is never exposed
+  unauthenticated; the token is entered once in the UI and remembered by
+  the browser across reloads
 - 📡 Works with Shelly **Gen2/Gen3/Gen4** devices (RPC API), multiple
   sensors per device, multiple devices — **DS18B20** temperature and
   **DHT22** humidity sensors
 - 🩺 **Failure classification with guidance**: OK · 85 °C reset · no
   reading · missing · unreachable · auth failed · no sensors
+- 📊 **Fleet summary bar** with per-device health chips and a **search
+  filter** to zoom in on the one Shelly you are troubleshooting
+- 🎯 **Per-sensor querying** — poll a single suspect sensor via its
+  dedicated RPC without touching the rest
 - 📈 **In-memory history graph** (one point per query) makes intermittent
-  failures visible
+  failures visible — clearable from the UI for a fresh test run, and
+  **exportable as CSV** for plotting/analysis elsewhere
+- ↗️ **Trend arrows** per sensor (vs. ~5 minutes ago) show at a glance
+  what is heating up or cooling down
 - 🔧 **Wiggle test**: polls every 2 s for 60 s while you physically re-seat
   cables and connectors — contact problems show up live in the graph
-- 🔁 **Auto-refresh** toggle (every 30 s, pauses in background tabs)
+- 🔁 **Auto-refresh** toggle (interval and on-by-default configurable via
+  env, pauses in background tabs)
 - 📊 Optional **Prometheus `/metrics`** endpoint for long-term monitoring
 - 🌍 **Multi-language** (English, German — [add yours](docs/TRANSLATIONS.md)
   with a single JSON file)
@@ -74,31 +85,29 @@ failure-mode guide.
 
 ```bash
 docker run --rm -p 8080:8080 \
+  -e DEBUG_TOKEN="$(openssl rand -hex 24)" \
   -e SHELLY_1_HOST=192.168.1.50 \
   -e SHELLY_1_NAME="Pool" \
   -e SHELLY_1_PASSWORD='your-shelly-admin-password' \
   ghcr.io/steiner-dominik/shelly-add-on-temperature-debug:latest
 ```
 
-Open <http://localhost:8080/debug>.
+Open <http://localhost:8080/debug> and enter the token (echo it first if you
+generated it inline). The browser remembers it across reloads.
 
 ### docker-compose
 
-```yaml
-services:
-  shelly-debug:
-    image: ghcr.io/steiner-dominik/shelly-add-on-temperature-debug:latest
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    environment:
-      SHELLY_PASSWORD: ${SHELLY_PASSWORD}      # shared fallback password
-      SHELLY_1_HOST: 192.168.1.50
-      SHELLY_1_NAME: Pool
-      SHELLY_2_HOST: shelly-garden.lan
-      SHELLY_2_NAME: Garden
-      SHELLY_2_PASSWORD: ${GARDEN_PASSWORD}    # per-device override
-      DEBUG_TOKEN: ${DEBUG_TOKEN}              # optional page protection
+A fully commented [docker-compose.example.yml](deploy/docker-compose.example.yml)
+with **all** options and a matching [env.example](deploy/env.example) ship in
+this repo (under `deploy/`) and are attached to every
+[GitHub release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases):
+
+```bash
+curl -LO https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases/latest/download/docker-compose.example.yml
+curl -LO https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases/latest/download/env.example
+cp env.example .env                            # edit: hosts, passwords, token
+mv docker-compose.example.yml docker-compose.yml
+docker compose up -d
 ```
 
 ## Configuration (environment variables)
@@ -113,12 +122,14 @@ contiguous and start at 1.
 | `SHELLY_n_PASSWORD` | no | `SHELLY_PASSWORD` | Device admin password (omit if auth is disabled) |
 | `SHELLY_n_USER` | no | `admin` | Auth user (Gen2+ is always `admin`) |
 | `SHELLY_PASSWORD` | no | – | Fallback password for all endpoints |
-| `DEBUG_TOKEN` | no | – | If set, the API requires this token. Share the link as `…/debug?token=<value>` — the browser stores it locally |
+| `DEBUG_TOKEN` | **yes** | – | Access token the API requires on every request (`X-Debug-Token` or `Authorization: Bearer` header). Entered once in the UI, stored by the browser. Never accepted as a URL parameter. Setting it **explicitly empty** (`DEBUG_TOKEN=`) disables authentication — only do that behind an authenticating reverse proxy |
 | `BASE_PATH` | no | `/debug` | Path prefix the app serves under (use `/` for root) |
 | `PORT` | no | `8080` | Listen port |
-| `HISTORY_SIZE` | no | `100` | In-memory samples kept per sensor |
+| `HISTORY_SIZE` | no | `40000` | In-memory samples kept per sensor (~48 bytes each: 8 sensors × 40000 ≈ 15 MB RAM). Charts show the newest 1000; the CSV export contains everything |
 | `QUERY_TIMEOUT_SECONDS` | no | `5` | Per-device query timeout |
 | `QUERY_MIN_INTERVAL_SECONDS` | no | `2` | Rate limit: minimum time between real device queries; faster requests get a shared cached result |
+| `AUTO_REFRESH_SECONDS` | no | `30` | Interval of the page's auto-refresh |
+| `AUTO_REFRESH_DEFAULT` | no | `false` | Set to `true` to start auto-refresh enabled for browsers that never touched the toggle |
 | `METRICS_ENABLED` | no | `false` | Set to `true` to expose Prometheus metrics at `{BASE_PATH}/metrics` |
 
 ## Reverse proxy
@@ -174,9 +185,10 @@ welcome!
 
 Designed to be internet-facing behind a TLS reverse proxy: the Shelly
 password never leaves the server, all device queries are read-only and
-rate-limited (no amplification against your devices), the API can be gated
-with `DEBUG_TOKEN`, and the page sets a strict Content-Security-Policy and
-loads zero external resources. Details, threat model, and hosting
+rate-limited (no amplification against your devices), the API always
+requires the `DEBUG_TOKEN` (headers only — never in URLs), and the page
+sets a strict Content-Security-Policy (no inline scripts/styles) and loads
+zero external resources. Details, threat model, and hosting
 recommendations: [SECURITY.md](SECURITY.md).
 
 ## Software bill of materials & updating
@@ -190,7 +202,7 @@ third-party runtime code at all**:
 | `golang:1.26-alpine` | `Dockerfile` (build stage only) | Compiler image; also the source of the CA bundle | Bump the tag (Dependabot PRs this) |
 | `scratch` | `Dockerfile` (runtime) | Empty base image — nothing to patch | – |
 | `actions/checkout`, `actions/setup-go`, `docker/*` actions | `.github/workflows/build.yml` | CI plumbing, not shipped in the image | Bump versions (Dependabot PRs this) |
-| Frontend | `static/index.html` | Hand-written vanilla JS/CSS, no frameworks, no CDN loads | Edit the file |
+| Frontend | `web/static/` (`index.html`, `app.css`, `app.js`, `favicon.svg`) | Hand-written vanilla JS/CSS, no frameworks, no CDN loads | Edit the files |
 
 [Dependabot is configured](.github/dependabot.yml) to open weekly PRs for the
 Go toolchain, the Docker base image, and the GitHub Actions. **If this repo
@@ -205,14 +217,19 @@ installed produces the identical single binary.
 |---|---|---|
 | `{BASE_PATH}/` | GET | The debug page |
 | `{BASE_PATH}/api/query` | POST/GET | Query all Shellys live (rate-limited, cached), append to history, return results incl. status codes |
-| `{BASE_PATH}/api/history` | GET | The in-memory history buffer |
+| `{BASE_PATH}/api/query/sensor?ep={idx}&key={key}` | POST/GET | Query one single sensor (its `Temperature`/`Humidity.GetStatus` RPC); `ep` is the 0-based endpoint index, `key` e.g. `temperature:100` |
+| `{BASE_PATH}/api/history` | GET | The in-memory history buffer; `?limit=N` returns only the newest N samples per sensor (the page charts use `limit=1000`) |
+| `{BASE_PATH}/api/history` | DELETE | Clear the in-memory history |
 | `{BASE_PATH}/locales/index.json` | GET | Available languages |
 | `{BASE_PATH}/locales/{code}.json` | GET | Locale strings (labels + guidance) |
 | `{BASE_PATH}/metrics` | GET | Prometheus metrics (only when `METRICS_ENABLED=true`) |
 | `/healthz` | GET | Liveness probe (no auth) |
 
-With `DEBUG_TOKEN` set, the `/api/*` and `/metrics` endpoints need the
-`X-Debug-Token` header or `?token=` query parameter.
+Every `/api/*` and `/metrics` request must present the token, either as
+`X-Debug-Token: <token>` or `Authorization: Bearer <token>`. Tokens in URL
+query parameters are **not** accepted (they would leak into proxy/access
+logs and browser history). With an explicitly empty `DEBUG_TOKEN` the API
+is open (see the configuration table).
 
 ### Prometheus
 
@@ -232,8 +249,8 @@ scrape_configs:
     metrics_path: /debug/metrics
     scrape_interval: 60s
     static_configs: [{ targets: ["shelly-debug:8080"] }]
-    # with DEBUG_TOKEN set:
-    params: { token: ["<your token>"] }
+    authorization:            # DEBUG_TOKEN as standard bearer token
+      credentials: <your token>
 ```
 
 Machine-readable status codes (`ok`, `reset85`, `read_error`, `missing`,
@@ -243,7 +260,7 @@ as metric labels; human-readable texts live in the locale files.
 ## Development
 
 ```bash
-export SHELLY_1_HOST=192.168.1.50 SHELLY_1_PASSWORD='…'
+export DEBUG_TOKEN=dev SHELLY_1_HOST=192.168.1.50 SHELLY_1_PASSWORD='…'
 go run .
 # → http://localhost:8080/debug
 go test ./...

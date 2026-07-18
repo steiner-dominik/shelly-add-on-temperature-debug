@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -170,6 +170,43 @@ func queryEndpoint(ctx context.Context, ep EndpointConfig, timeout time.Duration
 	} else {
 		res.Status = statusOK
 	}
+	return res
+}
+
+// querySensor reads one single add-on sensor via its dedicated component RPC
+// (Temperature.GetStatus / Humidity.GetStatus), so a suspect sensor can be
+// polled without touching the whole device status. An RPC failure is reported
+// as read_error with the transport error attached — for troubleshooting the
+// distinction "this one sensor did not answer" is what matters.
+func querySensor(ctx context.Context, ep EndpointConfig, timeout time.Duration, meta *metaCache, key string) SensorResult {
+	kind, id, _ := splitComponentKey(key)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	client := newShellyClient(ep, timeout)
+	dm := meta.get(ctx, client, ep.BaseURL)
+	res := SensorResult{Key: key, ID: id, Kind: kind, Name: sensorName(dm, key, id)}
+
+	method := map[string]string{"temperature": "Temperature.GetStatus", "humidity": "Humidity.GetStatus"}[kind]
+	raw, err := client.rpc(ctx, fmt.Sprintf("%s?id=%d", method, id))
+	if err != nil {
+		res.Errors = []string{err.Error()}
+		res.Status = classifySensor(kind, nil, res.Errors, false)
+		return res
+	}
+	var fields map[string]json.RawMessage
+	if e := json.Unmarshal(raw, &fields); e != nil {
+		res.Errors = []string{"unexpected response from device: " + e.Error()}
+		res.Status = classifySensor(kind, nil, res.Errors, false)
+		return res
+	}
+	var value *float64
+	json.Unmarshal(fields[sensorKinds[kind]], &value)
+	var errs []string
+	json.Unmarshal(fields["errors"], &errs)
+	res.Value = value
+	res.Errors = errs
+	res.Status = classifySensor(kind, value, errs, false)
 	return res
 }
 

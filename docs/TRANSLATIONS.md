@@ -1,14 +1,14 @@
 # Adding a translation
 
 All user-facing text — UI labels, status names, and the troubleshooting
-guidance — lives in one JSON file per language in [`locales/`](../locales).
+guidance — lives in one JSON file per language in [`web/locales/`](../web/locales).
 The server embeds these files at build time and the page offers every present
 language in its picker automatically. **Adding a language is one file + one
 pull request; no Go or JavaScript knowledge needed.**
 
 ## Steps
 
-1. Copy [`locales/en.json`](../locales/en.json) to `locales/<code>.json`,
+1. Copy [`web/locales/en.json`](../web/locales/en.json) to `web/locales/<code>.json`,
    where `<code>` is the two-letter [ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes)
    code (e.g. `fr.json`, `nl.json`, `it.json`).
 2. Set the header:

@@ -1,6 +1,9 @@
-package main
+package app
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func f(v float64) *float64 { return &v }
 
@@ -44,7 +47,28 @@ func TestNormalizeBasePath(t *testing.T) {
 	}
 }
 
+func TestLoadConfigTokenSemantics(t *testing.T) {
+	t.Setenv("SHELLY_1_HOST", "192.168.1.10")
+
+	t.Setenv("DEBUG_TOKEN", "placeholder") // registers cleanup restore
+	os.Unsetenv("DEBUG_TOKEN")
+	if _, err := loadConfig(); err == nil {
+		t.Fatal("loadConfig must fail when DEBUG_TOKEN is unset")
+	}
+
+	// Explicitly empty = deliberate opt-out (auth at the proxy).
+	t.Setenv("DEBUG_TOKEN", "")
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("explicitly empty DEBUG_TOKEN must be allowed: %v", err)
+	}
+	if cfg.Token != "" {
+		t.Fatalf("token = %q, want empty", cfg.Token)
+	}
+}
+
 func TestLoadConfigEndpoints(t *testing.T) {
+	t.Setenv("DEBUG_TOKEN", "secret")
 	t.Setenv("SHELLY_1_HOST", "192.168.1.10")
 	t.Setenv("SHELLY_1_NAME", "Pool")
 	t.Setenv("SHELLY_2_HOST", "https://shelly2.example.com/")

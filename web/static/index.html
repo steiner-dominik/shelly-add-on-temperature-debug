@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Shelly Add-on Temperature Debug</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="live-dot idle" id="livedot" aria-hidden="true"></span>
+      <span class="brand-title">Shelly Add&#8209;On Temperature Debug</span>
+    </div>
+    <div class="searchwrap">
+      <input id="search" type="search" autocomplete="off" spellcheck="false">
+      <kbd aria-hidden="true">/</kbd>
+    </div>
+    <div class="prefs">
+      <select id="langsel" aria-label="Language"></select>
+      <select id="themesel" aria-label="Theme"></select>
+    </div>
+  </div>
+</header>
+
+<div class="statusstrip" id="statusstrip" hidden>
+  <div class="statusstrip-inner">
+    <div class="agg" id="aggstats"></div>
+    <div class="devchips" id="devchips"></div>
+  </div>
+</div>
+
+<main>
+  <div class="banner" id="banner" hidden><span class="banner-dot" aria-hidden="true"></span><span id="bannertext"></span></div>
+
+  <section class="login" id="loginbox" hidden>
+    <div class="login-card">
+      <h2 id="tokenprompt"></h2>
+      <div class="loginrow">
+        <input id="tokeninput" type="password" autocomplete="current-password">
+        <button class="btn primary" id="tokensave"></button>
+      </div>
+      <p class="loginerr" id="loginerr" hidden></p>
+    </div>
+  </section>
+
+  <p class="subtitle" id="subtitle"></p>
+
+  <div class="toolbar" id="toolbar" hidden>
+    <button class="btn primary" id="querybtn"></button>
+    <button class="btn" id="wigglebtn"></button>
+    <label class="auto"><input type="checkbox" id="autorefresh"><span id="autolabel"></span></label>
+    <button class="btn" id="csvbtn"></button>
+    <button class="btn danger" id="clearbtn"></button>
+    <span class="lastq" id="lastq"></span>
+  </div>
+  <p class="hint" id="wigglehint" hidden></p>
+
+  <div id="results"><p class="empty">…</p></div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div id="legendline"></div>
+    <div id="historynote"></div>
+    <div class="meta">
+      <span id="disclaimer"></span><br>
+      Shelly Add-on Temperature Debug __VERSION__ ·
+      <a href="https://github.com/steiner-dominik/shelly-add-on-temperature-debug" rel="noopener">GitHub</a> · MIT ·
+      <a href="https://dominik.st/einer" rel="noopener">dominik.st/einer</a>
+    </div>
+  </div>
+</footer>
+<div class="tooltip" id="tooltip"></div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"fmt"
@@ -19,14 +19,16 @@ type EndpointConfig struct {
 
 // Config is the full application configuration, sourced from env vars only.
 type Config struct {
-	Port        string
-	BasePath    string // "" means served at root
-	Token       string
-	HistorySize int
-	Timeout     time.Duration
-	MinInterval time.Duration // device queries are rate-limited to one per this interval
-	Metrics     bool          // expose Prometheus metrics at {BASE_PATH}/metrics
-	Endpoints   []EndpointConfig
+	Port               string
+	BasePath           string // "" means served at root
+	Token              string // must be set; explicitly "" disables auth (proxy-side auth)
+	HistorySize        int
+	Timeout            time.Duration
+	MinInterval        time.Duration // device queries are rate-limited to one per this interval
+	Metrics            bool          // expose Prometheus metrics at {BASE_PATH}/metrics
+	AutoRefreshSec     int           // page auto-refresh interval
+	AutoRefreshDefault bool          // whether auto-refresh starts enabled for new browsers
+	Endpoints          []EndpointConfig
 }
 
 func getenv(key, fallback string) string {
@@ -45,8 +47,15 @@ func normalizeBasePath(p string) string {
 	return p // "" for "/"
 }
 
+func boolenv(key string) bool {
+	v := os.Getenv(key)
+	return v == "true" || v == "1"
+}
+
 func loadConfig() (*Config, error) {
-	histSize, err := strconv.Atoi(getenv("HISTORY_SIZE", "100"))
+	// Default ≈15 MB of RAM for a typical 8-sensor fleet: one sample costs
+	// ~48 bytes in memory, so 8 × 40000 × 48 B ≈ 14.6 MiB.
+	histSize, err := strconv.Atoi(getenv("HISTORY_SIZE", "40000"))
 	if err != nil || histSize < 2 {
 		return nil, fmt.Errorf("HISTORY_SIZE must be an integer >= 2")
 	}
@@ -58,15 +67,29 @@ func loadConfig() (*Config, error) {
 	if err != nil || minIntervalSec < 0 {
 		return nil, fmt.Errorf("QUERY_MIN_INTERVAL_SECONDS must be an integer >= 0")
 	}
+	autoRefreshSec, err := strconv.Atoi(getenv("AUTO_REFRESH_SECONDS", "30"))
+	if err != nil || autoRefreshSec < 1 {
+		return nil, fmt.Errorf("AUTO_REFRESH_SECONDS must be an integer >= 1")
+	}
+
+	// The token must be an explicit decision: unset refuses to start, while
+	// DEBUG_TOKEN="" deliberately disables auth (e.g. auth at the proxy).
+	token, tokenSet := os.LookupEnv("DEBUG_TOKEN")
+	token = strings.TrimSpace(token)
+	if !tokenSet {
+		return nil, fmt.Errorf("DEBUG_TOKEN must be set (pick a long random value; set DEBUG_TOKEN=\"\" explicitly to run without authentication, e.g. behind an authenticating reverse proxy)")
+	}
 
 	cfg := &Config{
-		Port:        getenv("PORT", "8080"),
-		BasePath:    normalizeBasePath(getenv("BASE_PATH", "/debug")),
-		Token:       os.Getenv("DEBUG_TOKEN"),
-		HistorySize: histSize,
-		Timeout:     time.Duration(timeoutSec) * time.Second,
-		MinInterval: time.Duration(minIntervalSec) * time.Second,
-		Metrics:     getenv("METRICS_ENABLED", "false") == "true" || os.Getenv("METRICS_ENABLED") == "1",
+		Port:               getenv("PORT", "8080"),
+		BasePath:           normalizeBasePath(getenv("BASE_PATH", "/debug")),
+		Token:              token,
+		HistorySize:        histSize,
+		Timeout:            time.Duration(timeoutSec) * time.Second,
+		MinInterval:        time.Duration(minIntervalSec) * time.Second,
+		Metrics:            boolenv("METRICS_ENABLED"),
+		AutoRefreshSec:     autoRefreshSec,
+		AutoRefreshDefault: boolenv("AUTO_REFRESH_DEFAULT"),
 	}
 
 	globalPW := os.Getenv("SHELLY_PASSWORD")
