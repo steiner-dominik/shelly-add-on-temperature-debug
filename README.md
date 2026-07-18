@@ -54,6 +54,11 @@ plain-language guidance on what to check.
   what is heating up or cooling down
 - 🔧 **Wiggle test**: polls every 2 s for 60 s while you physically re-seat
   cables and connectors — contact problems show up live in the graph
+- 🧩 **Sensor provisioning** (optional, `PROVISION_PASSPHRASE`): let a
+  helper plug in a **new DS18B20**, scan the 1-Wire bus from the page, name
+  the probe, and attach it — without ever seeing the Shelly web UI or admin
+  password. Gated by a separate passphrase on top of the access token;
+  disabled unless configured
 - 🔁 **Auto-refresh** toggle (interval and on-by-default configurable via
   env, pauses in background tabs)
 - 🕙 **Background polling** (`BACKGROUND_POLL_SECONDS`): the server itself
@@ -140,6 +145,7 @@ contiguous and start at 1.
 | `SHELLY_n_USER` | no | `admin` | Auth user (Gen2+ is always `admin`) |
 | `SHELLY_PASSWORD` | no | – | Fallback password for all endpoints |
 | `DEBUG_TOKEN` | **yes** | – | Access token the API requires on every request (`X-Debug-Token` or `Authorization: Bearer` header). Entered once in the UI, stored by the browser. Never accepted as a URL parameter. Setting it **explicitly empty** (`DEBUG_TOKEN=`) disables authentication — only do that behind an authenticating reverse proxy |
+| `PROVISION_PASSPHRASE` | no | – | Enables **sensor provisioning**: with this set, the page offers scanning the Sensor Add-on's 1-Wire bus and attaching new DS18B20 probes (name asked before adding; the Shelly reboots to activate the sensor). Requests must carry the passphrase as an `X-Provision-Key` header **in addition** to the token. Unset = the provisioning API does not exist |
 | `BASE_PATH` | no | `/debug` | Path prefix the app serves under (use `/` for root) |
 | `PORT` | no | `8080` | Listen port |
 | `HISTORY_MAX_MB` | no | `16` | Total in-memory history budget in MB, shared by **all** sensors (~64 bytes per sample → 16 MB ≈ 260k samples). When full, the oldest samples across all sensors are dropped. Charts show the newest 1000 per sensor; the CSV export contains everything. Replaces the former per-sensor `HISTORY_SIZE`, which is ignored (with a startup warning) |
@@ -202,8 +208,10 @@ welcome!
 ## Security
 
 Designed to be internet-facing behind a TLS reverse proxy: the Shelly
-password never leaves the server, all device queries are read-only and
-rate-limited (no amplification against your devices), the API always
+password never leaves the server, device queries are read-only and
+rate-limited (no amplification against your devices; the only write
+capability — attaching new sensors — requires the separate
+`PROVISION_PASSPHRASE` and does not exist otherwise), the API always
 requires the `DEBUG_TOKEN` (headers only — never in URLs), and the page
 sets a strict Content-Security-Policy (no inline scripts/styles) and loads
 zero external resources. Details, threat model, and hosting
@@ -239,6 +247,9 @@ installed produces the identical single binary.
 | `{BASE_PATH}/api/history` | GET | The in-memory history buffer; `?limit=N` returns only the newest N samples per sensor (the page charts use `limit=1000`) |
 | `{BASE_PATH}/manifest.webmanifest`, `{BASE_PATH}/sw.js` | GET | PWA manifest and service worker (app shell only; API responses are never cached) |
 | `{BASE_PATH}/api/history` | DELETE | Clear the in-memory history |
+| `{BASE_PATH}/api/provision/scan?ep={idx}` | POST/GET | Scan the endpoint's 1-Wire bus (`SensorAddon.OneWireScan`); returns probes with their linked component (or none) — only with `PROVISION_PASSPHRASE` set, requires the `X-Provision-Key` header |
+| `{BASE_PATH}/api/provision/add` | POST | Attach one scanned probe: body `{"ep":0,"addr":"…","name":"…"}`; adds the peripheral, reboots the Shelly, then names the new component in the background — same gating as scan |
+| `{BASE_PATH}/api/provision/status?ep={idx}` | GET | Progress of provisioning jobs (`rebooting` → `naming` → `done`/`error`) — same gating as scan |
 | `{BASE_PATH}/locales/index.json` | GET | Available languages |
 | `{BASE_PATH}/locales/{code}.json` | GET | Locale strings (labels + guidance) |
 | `{BASE_PATH}/metrics` | GET | Prometheus metrics (only when `METRICS_ENABLED=true`) |

@@ -61,23 +61,53 @@
     <button class="btn" id="wigglebtn"></button>
     <label class="auto"><input type="checkbox" id="autorefresh"><span id="autolabel"></span></label>
     <button class="btn" id="csvbtn"></button>
+    <button class="btn" id="provbtn" hidden></button>
     <button class="btn danger" id="clearbtn"></button>
     <span class="lastq" id="lastq"></span>
   </div>
   <p class="hint" id="wigglehint" hidden></p>
+
+  <section class="provpanel" id="provpanel" hidden>
+    <div class="provhead">
+      <h2 id="provtitle"></h2>
+      <button class="provclose" id="provclose" type="button" aria-label="Close">✕</button>
+    </div>
+    <p class="provintro" id="provintro"></p>
+    <div id="provlock">
+      <p class="provlocknote" id="provlocknote"></p>
+      <div class="loginrow">
+        <input id="provkey" type="password" autocomplete="off">
+        <button class="btn primary" id="provunlock"></button>
+      </div>
+      <p class="loginerr" id="provkeyerr" hidden></p>
+    </div>
+    <div id="provbody" hidden></div>
+  </section>
 
   <div id="results"><p class="empty">…</p></div>
 </main>
 
 <footer>
   <div class="footer-inner">
-    <div id="legendline"></div>
-    <div id="historynote"></div>
-    <div class="meta">
-      <span id="disclaimer"></span><br>
-      Shelly Add-on Temperature Debug __VERSION__ ·
-      <a href="https://github.com/steiner-dominik/shelly-add-on-temperature-debug" rel="noopener">GitHub</a> · MIT ·
-      <a href="https://dominik.st/einer" rel="noopener">dominik.st/einer</a>
+    <div class="footer-legend" id="legendline"></div>
+    <div class="footer-notes">
+      <span id="historynote"></span>
+      <span id="disclaimer"></span>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-app">
+        <span class="footer-appname">Shelly Add&#8209;on Temperature Debug</span>
+        <span class="footer-ver">__VERSION__</span>
+        <span class="footer-sep" aria-hidden="true">·</span>
+        <a href="https://github.com/steiner-dominik/shelly-add-on-temperature-debug" rel="noopener">GitHub</a>
+        <span class="footer-sep" aria-hidden="true">·</span>
+        <span>MIT</span>
+      </div>
+      <a class="footer-credit" href="https://dominik.st/einer" rel="noopener">
+        <span class="footer-credit-by" id="footerby"></span>
+        <span class="footer-credit-domain">dominik.st</span>
+        <span class="footer-credit-arrow" aria-hidden="true">↗</span>
+      </a>
     </div>
   </div>
 </footer>

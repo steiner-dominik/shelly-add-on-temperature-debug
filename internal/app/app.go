@@ -57,6 +57,10 @@ type server struct {
 	// per-sensor query cache, same rate-limit contract as the full query
 	sensorMu    sync.Mutex
 	sensorCache map[string]sensorCacheEntry // "epIdx/sensorKey" -> last result
+
+	// in-flight and recently finished provisioning operations, "epIdx/addr"
+	provMu   sync.Mutex
+	provJobs map[string]*provisionJob
 }
 
 type sensorCacheEntry struct {
@@ -75,6 +79,7 @@ func Run(version string) {
 		cfg: cfg, meta: newMetaCache(), history: newHistory(int64(cfg.HistoryMaxMB) << 20),
 		queryMu:     make(chan struct{}, 1),
 		sensorCache: map[string]sensorCacheEntry{},
+		provJobs:    map[string]*provisionJob{},
 	}
 	rawIndex, err := web.FS.ReadFile("static/index.html")
 	if err != nil {
@@ -129,6 +134,9 @@ func Run(version string) {
 	mux.HandleFunc(base+"/api/query", s.requireToken(s.handleQuery))
 	mux.HandleFunc(base+"/api/query/sensor", s.requireToken(s.handleQuerySensor))
 	mux.HandleFunc(base+"/api/history", s.requireToken(s.handleHistory))
+	mux.HandleFunc(base+"/api/provision/scan", s.requireToken(s.requireProvision(s.handleProvisionScan)))
+	mux.HandleFunc(base+"/api/provision/add", s.requireToken(s.requireProvision(s.handleProvisionAdd)))
+	mux.HandleFunc(base+"/api/provision/status", s.requireToken(s.requireProvision(s.handleProvisionStatus)))
 	if cfg.Metrics {
 		mux.HandleFunc(base+"/metrics", s.requireToken(s.handleMetrics))
 	}
@@ -161,8 +169,12 @@ func Run(version string) {
 	if cfg.BackgroundPollSec > 0 {
 		poll = fmt.Sprintf("background polling every %ds", cfg.BackgroundPollSec)
 	}
-	log.Printf("shelly-add-on-temperature-debug %s: serving %d Shelly endpoint(s) on :%s%s/ (%s, %s)",
-		version, len(cfg.Endpoints), cfg.Port, base, auth, poll)
+	prov := "provisioning disabled"
+	if cfg.ProvisionPass != "" {
+		prov = "sensor provisioning enabled (passphrase-gated)"
+	}
+	log.Printf("shelly-add-on-temperature-debug %s: serving %d Shelly endpoint(s) on :%s%s/ (%s, %s, %s)",
+		version, len(cfg.Endpoints), cfg.Port, base, auth, poll, prov)
 	log.Fatal(srv.ListenAndServe())
 }
 
@@ -249,6 +261,7 @@ func (s *server) handleQuery(w http.ResponseWriter, r *http.Request) {
 		"minIntervalSec":     int(s.cfg.MinInterval / time.Second),
 		"autoRefreshSec":     s.cfg.AutoRefreshSec,
 		"autoRefreshDefault": s.cfg.AutoRefreshDefault,
+		"provisioning":       s.cfg.ProvisionPass != "",
 		"endpoints":          results,
 	})
 }

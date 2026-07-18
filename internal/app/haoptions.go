@@ -23,6 +23,7 @@ type haOptions struct {
 	} `json:"devices"`
 	ShellyPassword        string `json:"shelly_password"`
 	DebugToken            string `json:"debug_token"`
+	ProvisionPassphrase   string `json:"provision_passphrase"`
 	BackgroundPollSeconds *int   `json:"background_poll_seconds"`
 	HistoryMaxMB          *int   `json:"history_max_mb"`
 	AutoRefreshSeconds    *int   `json:"auto_refresh_seconds"`
@@ -75,6 +76,9 @@ func applyHAOptions() error {
 	}
 	setIfUnset("DEBUG_TOKEN", o.DebugToken) // "" = auth via ingress
 	setIfUnset("BASE_PATH", "/")            // ingress serves the app at its root
+	if o.ProvisionPassphrase != "" {
+		setIfUnset("PROVISION_PASSPHRASE", o.ProvisionPassphrase)
+	}
 	setInt := func(key string, v *int) {
 		if v != nil {
 			setIfUnset(key, strconv.Itoa(*v))

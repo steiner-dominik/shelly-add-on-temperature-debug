@@ -54,6 +54,14 @@ function applyChrome() {
   $("tokensave").textContent = t("unlock");
   $("historynote").textContent = t("historyNote");
   $("disclaimer").textContent = t("disclaimer");
+  $("footerby").textContent = t("footerBy");
+  $("provbtn").textContent = t("provBtn");
+  $("provtitle").textContent = t("provTitle");
+  $("provintro").textContent = t("provIntro");
+  $("provlocknote").textContent = t("provLockNote");
+  $("provkey").placeholder = t("provKeyPlaceholder");
+  $("provunlock").textContent = t("unlock");
+  if (!$("provpanel").hidden) renderProv();
   const lg = [["ok", "legendOk"], ["reset85", "legendReset85"], ["read_error", "legendReadError"], ["missing", "legendMissing"]]
     .map(([st, key]) => `<b>${esc(L.status[st])}</b> — ${esc(t(key))}`).join(" · ");
   $("legendline").innerHTML = `${esc(t("legendTitle"))} ${lg}`;
@@ -92,6 +100,9 @@ function authHeaders() {
 }
 function showLocked(rejected) {
   stopWiggle();
+  stopProvPoll();
+  $("provpanel").hidden = true;
+  $("provbtn").hidden = true;
   $("loginbox").hidden = false;
   $("toolbar").hidden = true;
   $("statusstrip").hidden = true;
@@ -247,6 +258,192 @@ $("csvbtn").addEventListener("click", async () => {
   }
 });
 
+// --- provisioning: attach new DS18B20 probes without the Shelly UI --------
+// Server-side feature, only advertised when PROVISION_PASSPHRASE is set.
+// Every provisioning request carries the passphrase in the X-Provision-Key
+// header (on top of the normal token); it is kept in sessionStorage only, so
+// closing the tab forgets it.
+const provState = {}; // epIdx -> {devices, jobs, scanning, error}
+let provPollTimer = null;
+
+async function provApi(path, opts = {}) {
+  const resp = await fetch(base + path, {
+    ...opts,
+    headers: { ...authHeaders(), "X-Provision-Key": sessionStorage.getItem("provKey") || "", ...(opts.headers || {}) },
+  });
+  let data = {};
+  try { data = await resp.json(); } catch (e) { /* keep {} */ }
+  if (resp.status === 401) throw { unauthorized: true };
+  if (resp.status === 403) throw { provDenied: true };
+  if (!resp.ok) throw new Error(data.error || "HTTP " + resp.status);
+  return data;
+}
+
+function openProv() {
+  $("provpanel").hidden = false;
+  const unlocked = sessionStorage.getItem("provKey") != null;
+  $("provlock").hidden = unlocked;
+  $("provbody").hidden = !unlocked;
+  if (unlocked) renderProv(); else $("provkey").focus();
+}
+function closeProv() {
+  $("provpanel").hidden = true;
+  stopProvPoll();
+}
+function provLock(rejected) {
+  sessionStorage.removeItem("provKey");
+  stopProvPoll();
+  $("provlock").hidden = false;
+  $("provbody").hidden = true;
+  $("provkeyerr").hidden = !rejected;
+  if (rejected) $("provkeyerr").textContent = t("provKeyRejected");
+  $("provkey").focus();
+}
+$("provbtn").addEventListener("click", () => $("provpanel").hidden ? openProv() : closeProv());
+$("provclose").addEventListener("click", closeProv);
+$("provunlock").addEventListener("click", () => {
+  const v = $("provkey").value.trim();
+  if (!v) return;
+  sessionStorage.setItem("provKey", v);
+  $("provkey").value = "";
+  $("provkeyerr").hidden = true;
+  $("provlock").hidden = true;
+  $("provbody").hidden = false;
+  renderProv();
+});
+$("provkey").addEventListener("keydown", e => { if (e.key === "Enter") $("provunlock").click(); });
+
+const PROV_JOB_TEXT = { rebooting: "provStateRebooting", naming: "provStateNaming" };
+function provJobRow(j) {
+  const cls = j.state === "error" ? "crit" : j.state === "done" ? "ok" : "busy";
+  let txt;
+  if (j.state === "done") txt = fmt(t("provStateDone"), { component: j.component || "" });
+  else if (j.state === "error") txt = fmt(t("provStateError"), { err: j.error || "" });
+  else txt = t(PROV_JOB_TEXT[j.state] || j.state);
+  return `<div class="provdev"><span class="provaddr">${esc(j.addr)}</span>
+    <span class="provjob ${cls}">${j.name ? "<b>" + esc(j.name) + "</b> — " : ""}${esc(txt)}</span></div>`;
+}
+
+function renderProv() {
+  if (!lastData) { $("provbody").innerHTML = `<p class="provempty">…</p>`; return; }
+  $("provbody").innerHTML = lastData.endpoints.map((ep, i) => {
+    const st = provState[i] || {};
+    const devices = st.devices || [], jobs = st.jobs || [];
+    const rows = [];
+    if (st.error) rows.push(`<p class="loginerr">${esc(st.error)}</p>`);
+    devices.forEach(d => {
+      if (d.component) {
+        rows.push(`<div class="provdev"><span class="provaddr">${esc(d.addr)}</span>
+          <span class="provtag">${esc(t("provTagKnown"))}</span>
+          <span class="provknown">${d.name ? `<b>${esc(d.name)}</b> · ` : ""}<span class="skey">${esc(d.component)}</span></span></div>`);
+        return;
+      }
+      const job = jobs.find(j => j.addr === d.addr && j.state !== "error");
+      if (job) { rows.push(provJobRow(job)); return; }
+      rows.push(`<div class="provdev"><span class="provaddr">${esc(d.addr)}</span>
+        <span class="provtag new">${esc(t("provTagNew"))}</span>
+        <input class="provname" data-ep="${i}" data-addr="${esc(d.addr)}" maxlength="64" placeholder="${esc(t("provNamePlaceholder"))}">
+        <button class="btn primary provadd" data-ep="${i}" data-addr="${esc(d.addr)}" type="button">${esc(t("provAdd"))}</button></div>`);
+    });
+    // Jobs whose probe is not in the (possibly stale) scan list, and errors.
+    jobs.forEach(j => {
+      const shown = devices.some(d => d.addr === j.addr) && j.state !== "error";
+      if (!shown) rows.push(provJobRow(j));
+    });
+    if (st.devices && !devices.length) rows.push(`<p class="provempty">${esc(t("provNoDevices"))}</p>`);
+    return `<div class="provep">
+      <div class="provephead"><h3>${esc(ep.name)}</h3>
+      <button class="btn provscan" data-ep="${i}" type="button"${st.scanning ? " disabled" : ""}>${esc(st.scanning ? t("provScanning") : t("provScan"))}</button></div>
+      ${rows.join("")}</div>`;
+  }).join("");
+}
+
+async function provScan(i) {
+  const st = provState[i] = provState[i] || {};
+  if (st.scanning) return;
+  st.scanning = true; st.error = null;
+  renderProv();
+  try {
+    const data = await provApi(`/api/provision/scan?ep=${i}`, { method: "POST" });
+    st.devices = data.devices || [];
+    st.jobs = data.jobs || [];
+  } catch (err) {
+    st.scanning = false;
+    if (err && err.unauthorized) { closeProv(); showLocked(true); return; }
+    if (err && err.provDenied) { provLock(true); return; }
+    st.error = fmt(t("provScanFailed"), { err: err.message || err });
+  }
+  st.scanning = false;
+  renderProv();
+  armProvPoll();
+}
+
+async function provAdd(btn) {
+  const i = Number(btn.dataset.ep), addr = btn.dataset.addr;
+  const input = document.querySelector(`input.provname[data-ep="${i}"][data-addr="${addr}"]`);
+  const name = (input ? input.value : "").trim();
+  if (!name) {
+    if (input) { input.classList.add("invalid"); input.focus(); }
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const data = await provApi("/api/provision/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ep: i, addr, name }),
+    });
+    const st = provState[i] = provState[i] || {};
+    st.jobs = (st.jobs || []).filter(j => j.addr !== addr).concat(data.job ? [data.job] : []);
+    renderProv();
+    armProvPoll();
+  } catch (err) {
+    if (err && err.unauthorized) { closeProv(); showLocked(true); return; }
+    if (err && err.provDenied) { provLock(true); return; }
+    showBanner(fmt(t("provAddFailed"), { err: err.message || err }), 6000);
+    btn.disabled = false;
+  }
+}
+$("provpanel").addEventListener("click", e => {
+  const scanBtn = e.target.closest("button.provscan");
+  if (scanBtn) { provScan(Number(scanBtn.dataset.ep)); return; }
+  const addBtn = e.target.closest("button.provadd");
+  if (addBtn) provAdd(addBtn);
+});
+$("provpanel").addEventListener("input", e => e.target.classList.remove("invalid"));
+
+// While a job is running the device reboots: poll its status (scan requests
+// would fail anyway), then refresh readings + rescan once it settles.
+function provJobsActive() {
+  return Object.values(provState).some(st => (st.jobs || []).some(j => j.state === "rebooting" || j.state === "naming"));
+}
+function armProvPoll() {
+  if (provPollTimer || !provJobsActive()) return;
+  provPollTimer = setInterval(async () => {
+    let stillActive = false;
+    for (const [i, st] of Object.entries(provState)) {
+      if (!(st.jobs || []).some(j => j.state === "rebooting" || j.state === "naming")) continue;
+      try {
+        const data = await provApi(`/api/provision/status?ep=${i}`);
+        st.jobs = data.jobs || [];
+        const nowActive = st.jobs.some(j => j.state === "rebooting" || j.state === "naming");
+        if (!nowActive) { runQuery(); provScan(Number(i)); }
+        stillActive = stillActive || nowActive;
+      } catch (err) {
+        if (err && err.provDenied) { provLock(true); return; }
+        if (err && err.unauthorized) { closeProv(); showLocked(true); return; }
+        stillActive = true; // server briefly unreachable — keep polling
+      }
+    }
+    renderProv();
+    if (!stillActive) stopProvPoll();
+  }, 3000);
+}
+function stopProvPoll() {
+  if (provPollTimer) clearInterval(provPollTimer);
+  provPollTimer = null;
+}
+
 // --- search / filter ---------------------------------------------------
 let filter = "";
 function epMatches(ep) {
@@ -325,6 +522,8 @@ function setAutoRefresh(on) {
   armAutoRefresh(on);
 }
 function applyServerRefreshConfig(data) {
+  $("provbtn").hidden = !data.provisioning;
+  if (!data.provisioning) $("provpanel").hidden = true;
   if (data.autoRefreshSec != null && data.autoRefreshSec !== autoRefreshSec) {
     autoRefreshSec = data.autoRefreshSec;
     $("autolabel").textContent = fmt(t("autoRefresh"), { s: autoRefreshSec });

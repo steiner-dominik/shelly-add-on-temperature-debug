@@ -25,6 +25,7 @@ type Config struct {
 	Port               string
 	BasePath           string // "" means served at root
 	Token              string // must be set; explicitly "" disables auth (proxy-side auth)
+	ProvisionPass      string // gates the sensor-provisioning API; "" disables it entirely
 	HistoryMaxMB       int    // total in-memory history budget across all sensors
 	Timeout            time.Duration
 	MinInterval        time.Duration // device queries are rate-limited to one per this interval
@@ -98,6 +99,7 @@ func loadConfig() (*Config, error) {
 		Port:               getenv("PORT", "8080"),
 		BasePath:           normalizeBasePath(getenv("BASE_PATH", "/debug")),
 		Token:              token,
+		ProvisionPass:      strings.TrimSpace(os.Getenv("PROVISION_PASSPHRASE")),
 		HistoryMaxMB:       histMB,
 		Timeout:            time.Duration(timeoutSec) * time.Second,
 		MinInterval:        time.Duration(minIntervalSec) * time.Second,

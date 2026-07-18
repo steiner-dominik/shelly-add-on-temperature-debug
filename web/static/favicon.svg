@@ -1,5 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#0d1117"/>
-  <path d="M9 40h11l6-19 9 28 6-15h14" fill="none" stroke="#3fb950" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="55" cy="34" r="5.5" fill="#f85149"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d3557"/>
+      <stop offset=".55" stop-color="#12213c"/>
+      <stop offset="1" stop-color="#0a1220"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".12"/>
+      <stop offset=".5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="mercury" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fb923c"/>
+      <stop offset="1" stop-color="#ef4444"/>
+    </linearGradient>
+    <linearGradient id="trend" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#4ade80"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <rect width="64" height="64" rx="14" fill="url(#sheen)"/>
+  <!-- thermometer -->
+  <rect x="18.5" y="9" width="9" height="35" rx="4.5" fill="#ffffff" opacity=".16"/>
+  <rect x="18.5" y="9" width="9" height="35" rx="4.5" fill="none" stroke="#ffffff" stroke-opacity=".22" stroke-width="1"/>
+  <rect x="20.8" y="23" width="4.4" height="22" rx="2.2" fill="url(#mercury)"/>
+  <circle cx="23" cy="48.5" r="7" fill="url(#mercury)"/>
+  <circle cx="20.4" cy="46" r="1.7" fill="#ffffff" opacity=".4"/>
+  <line x1="31.5" y1="14" x2="34.5" y2="14" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+  <line x1="31.5" y1="21" x2="34.5" y2="21" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+  <line x1="31.5" y1="28" x2="34.5" y2="28" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+  <!-- trend line -->
+  <path d="M35 42 L42.5 32.5 L47.5 36.5 L56 25.5" fill="none" stroke="url(#trend)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="56" cy="25.5" r="5.5" fill="#4ade80" opacity=".22"/>
+  <circle cx="56" cy="25.5" r="3" fill="#4ade80"/>
 </svg>

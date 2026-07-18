@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/rand"
@@ -73,6 +74,80 @@ func (c *shellyClient) rpc(ctx context.Context, method string) (json.RawMessage,
 		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, method)
 	}
 	return body, nil
+}
+
+// call performs POST /rpc with a JSON-RPC envelope and returns the result
+// member. Needed for methods with structured parameters (SensorAddon.*,
+// *.SetConfig); simple parameterless reads keep using rpc/GET.
+func (c *shellyClient) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	env := map[string]any{"id": 1, "method": method}
+	if params != nil {
+		env["params"] = params
+	}
+	payload, err := json.Marshal(env)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.post(ctx, payload, "")
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		challenge := resp.Header.Get("WWW-Authenticate")
+		drain(resp)
+		if c.pass == "" {
+			return nil, fmt.Errorf("%w: device requires a password but none is configured", errAuth)
+		}
+		authz, err := digestAuthorization(challenge, "POST", "/rpc", c.user, c.pass)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", errAuth, err)
+		}
+		resp, err = c.post(ctx, payload, authz)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			drain(resp)
+			return nil, fmt.Errorf("%w: device rejected the configured password", errAuth)
+		}
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	var frame struct {
+		Result json.RawMessage `json:"result"`
+		Error  *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &frame); err != nil {
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, method)
+		}
+		return nil, fmt.Errorf("unexpected response from %s: %v", method, err)
+	}
+	if frame.Error != nil {
+		return nil, fmt.Errorf("%s failed: %s (code %d)", method, frame.Error.Message, frame.Error.Code)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, method)
+	}
+	return frame.Result, nil
+}
+
+func (c *shellyClient) post(ctx context.Context, payload []byte, authz string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/rpc", bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if authz != "" {
+		req.Header.Set("Authorization", authz)
+	}
+	return c.hc.Do(req)
 }
 
 func (c *shellyClient) get(ctx context.Context, uri, authz string) (*http.Response, error) {
@@ -182,6 +257,14 @@ var metaTTL = 10 * time.Minute
 
 func newMetaCache() *metaCache {
 	return &metaCache{entries: map[string]*deviceMeta{}}
+}
+
+// invalidate drops the cached metadata for one endpoint, forcing a refetch on
+// the next get — used after provisioning changes sensor names on the device.
+func (mc *metaCache) invalidate(key string) {
+	mc.mu.Lock()
+	delete(mc.entries, key)
+	mc.mu.Unlock()
 }
 
 // get returns cached metadata for the endpoint, refreshing it best-effort when stale.

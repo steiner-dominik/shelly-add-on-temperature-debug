@@ -33,6 +33,12 @@ services:
       # authentication — only do that when your reverse proxy handles auth.
       DEBUG_TOKEN: ${DEBUG_TOKEN}
 
+      # Optional second gate: with a passphrase set, the page can provision
+      # NEW DS18B20 sensors (scan the add-on's 1-Wire bus, name + attach a
+      # probe; the Shelly reboots briefly to activate it). Use a different
+      # value than DEBUG_TOKEN. Unset = provisioning API does not exist.
+      # PROVISION_PASSPHRASE: ${PROVISION_PASSPHRASE}
+
       # ---- Shelly devices (at least SHELLY_1_HOST is REQUIRED) --------
       # Numbering must be contiguous and start at 1.
       SHELLY_1_HOST: ${SHELLY_1_HOST}            # IP or FQDN, http:// assumed
