@@ -43,7 +43,7 @@ What a visitor can **never** get from this service:
 | Rate limiting + result cache | One device query per interval, shared across all visitors; concurrent requests are serialized |
 | Mandatory access token | `DEBUG_TOKEN` gates the entire API (constant-time comparison); accepted only via `X-Debug-Token` or `Authorization: Bearer` headers, never as a URL parameter. Explicitly setting it empty disables the gate — an intentional opt-out for proxy-side auth, never a silent default |
 | Security headers | Restrictive `Content-Security-Policy` (no external sources, no inline scripts/styles, no framing), `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy: no-referrer` |
-| Minimal image | `FROM scratch`, one static binary, runs as user 65534, no shell, no package manager |
+| Minimal image | `FROM scratch`, one static binary, no shell, no package manager. No baked-in `USER` (the Home Assistant Supervisor mounts its options file root-only); standalone deployments drop privileges at runtime with `user: "65534:65534"` |
 | No third-party code | Go standard library only; the page loads zero external scripts/fonts/CDNs |
 | Response caps | Device responses are size-limited; server read/write timeouts are set |
 

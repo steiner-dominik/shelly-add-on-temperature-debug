@@ -19,6 +19,10 @@ services:
     # Pin a CalVer tag in production so "latest" can't move under you, e.g.:
     # image: ghcr.io/steiner-dominik/shelly-add-on-temperature-debug:2026.07.17
     restart: unless-stopped
+    # The app needs no privileges — run it as nobody. (The image bakes in no
+    # USER because the Home Assistant add-on variant must read a root-only
+    # options file; standalone, this line gives you the same hardening.)
+    user: "65534:65534"
     ports:
       - "8080:8080"
     environment:
