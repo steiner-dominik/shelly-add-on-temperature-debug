@@ -9,60 +9,39 @@
 #   4. docker compose up -d
 #   5. Open http://localhost:8080/debug and enter your DEBUG_TOKEN.
 #
-# The app is stateless: no volumes, nothing written to disk. All
-# configuration is environment variables; secrets belong in .env (never
-# commit that file).
+# This file is deliberately static: ALL configuration (devices, secrets,
+# tuning) lives in .env — you should never need to edit this file. The app is
+# stateless: no volumes, nothing written to disk. NEVER commit your .env.
+
+# Fixed project name, so this stack never collides with other compose
+# projects that also call their service "shelly-debug".
+name: shelly-debug
 
 services:
   shelly-debug:
     image: ghcr.io/steiner-dominik/shelly-add-on-temperature-debug:latest
     # Pin a CalVer tag in production so "latest" can't move under you, e.g.:
-    # image: ghcr.io/steiner-dominik/shelly-add-on-temperature-debug:2026.07.17
+    # image: ghcr.io/steiner-dominik/shelly-add-on-temperature-debug:2026.07.19.1
     restart: unless-stopped
     # The app needs no privileges — run it as nobody. (The image bakes in no
     # USER because the Home Assistant add-on variant must read a root-only
     # options file; standalone, this line gives you the same hardening.)
     user: "65534:65534"
     ports:
+      # host:container — the container side must match PORT in .env
+      # (default 8080). Change only the left side to move the host port.
       - "8080:8080"
-    environment:
-      # ---- access control (REQUIRED) ----------------------------------
-      # Pick a long random value (e.g. `openssl rand -hex 24`) and share it
-      # with the people who may use the page. It is entered once in the
-      # browser and remembered. Setting it EXPLICITLY EMPTY ("") disables
-      # authentication — only do that when your reverse proxy handles auth.
-      DEBUG_TOKEN: ${DEBUG_TOKEN}
+    # Every variable the app knows is declared (and documented) in .env;
+    # docker compose passes the file through 1:1.
+    env_file: .env
+    networks:
+      - shelly-debug
 
-      # Optional second gate: with a passphrase set, the page can provision
-      # NEW DS18B20 sensors (scan the add-on's 1-Wire bus, name + attach a
-      # probe; the Shelly reboots briefly to activate it). Use a different
-      # value than DEBUG_TOKEN. Unset = provisioning API does not exist.
-      # PROVISION_PASSPHRASE: ${PROVISION_PASSPHRASE}
+# Dedicated network so this stack doesn't join (or interfere with) the
+# default bridge network of other compose projects on the same host.
+networks:
+  shelly-debug:
+    name: shelly-debug
 
-      # ---- Shelly devices (at least SHELLY_1_HOST is REQUIRED) --------
-      # Numbering must be contiguous and start at 1.
-      SHELLY_1_HOST: ${SHELLY_1_HOST}            # IP or FQDN, http:// assumed
-      SHELLY_1_NAME: ${SHELLY_1_NAME:-}          # display name (default: host)
-      # SHELLY_1_PASSWORD: ${SHELLY_1_PASSWORD}  # per-device password override
-      # SHELLY_1_USER: admin                     # Gen2+ is always "admin"
-
-      # SHELLY_2_HOST: 192.168.1.51
-      # SHELLY_2_NAME: Garden
-      # SHELLY_2_PASSWORD: ${SHELLY_2_PASSWORD}
-
-      # Fallback device password for every endpoint without its own:
-      SHELLY_PASSWORD: ${SHELLY_PASSWORD:-}
-
-      # ---- server (all optional, defaults shown) ----------------------
-      # BASE_PATH: /debug                  # path prefix ("/" for root)
-      # PORT: "8080"                       # listen port inside the container
-      # HISTORY_MAX_MB: "16"               # total in-memory history budget (MB) shared by all sensors
-      # BACKGROUND_POLL_SECONDS: "0"       # >0: server polls the Shellys itself, history fills without an open page
-      # QUERY_TIMEOUT_SECONDS: "5"         # per-device query timeout
-      # QUERY_MIN_INTERVAL_SECONDS: "2"    # rate limit between real device queries
-      # AUTO_REFRESH_SECONDS: "30"         # page auto-refresh interval
-      # AUTO_REFRESH_DEFAULT: "false"      # "true" starts auto-refresh enabled for new browsers
-      # METRICS_ENABLED: "false"           # "true" exposes Prometheus /debug/metrics
-
-    # Liveness: GET /healthz (no auth). The scratch image contains no shell
-    # or curl, so probe it from outside (reverse proxy, uptime monitor, k8s).
+# Liveness: GET /healthz (no auth). The scratch image contains no shell or
+# curl, so probe it from outside (reverse proxy, uptime monitor, k8s).

@@ -1,3 +1,5 @@
+<img src="web/static/icon-192.png" align="right" width="92" alt="App icon: thermometer on a Shelly Sensor Add-on">
+
 # 🌡 Shelly Add-on Temperature Debug
 
 [![Build, publish and release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/actions/workflows/build.yml/badge.svg)](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/actions/workflows/build.yml)
@@ -22,7 +24,10 @@ itself to the internet.
 > respective owner and is used here only to describe compatibility.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Debug page showing one Shelly with four DS18B20 sensors, one of them failing with guidance text, plus a history chart" width="720">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+    <img src="docs/screenshot-light.png" alt="Debug page showing two Shellys with DS18B20/DHT22 sensors, one sensor failing with guidance text, a fleet summary with all current readings, and history charts" width="720">
+  </picture>
 </p>
 
 Typical use case: your dashboard lives at `mydashboard.example.com`, and you
@@ -43,17 +48,21 @@ plain-language guidance on what to check.
   **DHT22** humidity sensors
 - 🩺 **Failure classification with guidance**: OK · 85 °C reset · no
   reading · missing · unreachable · auth failed · no sensors
-- 📊 **Fleet summary bar** with per-device health chips and a **search
-  filter** to zoom in on the one Shelly you are troubleshooting
+- 📊 **Fleet summary bar** with per-device health chips, the **current
+  reading of every sensor at a glance** (for the days you just want to know
+  the temperatures), and a **search filter** to zoom in on the one Shelly
+  you are troubleshooting
 - 🎯 **Per-sensor querying** — poll a single suspect sensor via its
   dedicated RPC without touching the rest
 - 📈 **In-memory history graph** (one point per query) makes intermittent
-  failures visible — clearable from the UI for a fresh test run, and
+  failures visible — with a **selectable time range** (15 min … 7 days,
+  default last 24 h), clearable from the UI for a fresh test run, and
   **exportable as CSV** for plotting/analysis elsewhere
 - ↗️ **Trend arrows** per sensor (vs. ~5 minutes ago) show at a glance
   what is heating up or cooling down
 - 🔧 **Wiggle test**: polls every 2 s for 60 s while you physically re-seat
-  cables and connectors — contact problems show up live in the graph
+  cables and connectors — contact problems show up live in the graph, which
+  automatically zooms to the last 15 minutes for the test
 - 🧩 **Sensor provisioning** (optional, `PROVISION_PASSPHRASE`): let a
   helper plug in a **new DS18B20**, scan the 1-Wire bus from the page, name
   the probe, and attach it — without ever seeing the Shelly web UI or admin
@@ -64,6 +73,9 @@ plain-language guidance on what to check.
 - 🕙 **Background polling** (`BACKGROUND_POLL_SECONDS`): the server itself
   queries the Shellys on an interval, so history charts are already
   populated the moment someone opens the page
+- ⚡ **Live dashboard**: the page picks up new readings every 5 seconds
+  (from background polling or other viewers) without any clicking — via a
+  cached endpoint that never touches the devices
 - 📱 **Installable as a PWA** — pinned toolbar and a layout tuned for
   phones make it a pocket sensor monitor
 - 📊 Optional **Prometheus `/metrics`** endpoint for long-term monitoring
@@ -119,10 +131,13 @@ setup needed).
 
 ### docker-compose
 
-A fully commented [docker-compose.example.yml](deploy/docker-compose.example.yml)
-with **all** options and a matching [env.example](deploy/env.example) ship in
-this repo (under `deploy/`) and are attached to every
-[GitHub release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases):
+A **static** [docker-compose.example.yml](deploy/docker-compose.example.yml)
+and a fully commented [env.example](deploy/env.example) declaring **all**
+options ship in this repo (under `deploy/`) and are attached to every
+[GitHub release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases).
+All configuration lives in `.env` — the compose file itself never needs
+editing. It pins the project name (`name: shelly-debug`) and runs on its own
+Docker network, so it won't collide with other compose stacks on the host:
 
 ```bash
 curl -LO https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases/latest/download/docker-compose.example.yml
@@ -149,7 +164,7 @@ contiguous and start at 1.
 | `BASE_PATH` | no | `/debug` | Path prefix the app serves under (use `/` for root) |
 | `PORT` | no | `8080` | Listen port |
 | `HISTORY_MAX_MB` | no | `16` | Total in-memory history budget in MB, shared by **all** sensors (~64 bytes per sample → 16 MB ≈ 260k samples). When full, the oldest samples across all sensors are dropped. Charts show the newest 1000 per sensor; the CSV export contains everything. Replaces the former per-sensor `HISTORY_SIZE`, which is ignored (with a startup warning) |
-| `BACKGROUND_POLL_SECONDS` | no | `0` | `> 0`: the server polls all Shellys itself on this interval (through the same rate-limited cache as the UI), so history exists before the first page view. `0` disables it — queries then only happen while somebody uses the page |
+| `BACKGROUND_POLL_SECONDS` | no | `0` | `> 0`: the server polls all Shellys itself on this interval (through the same rate-limited cache as the UI), so history exists before the first page view — and open pages show the new readings within 5 s. `0` disables it — queries then only happen while somebody uses the page |
 | `QUERY_TIMEOUT_SECONDS` | no | `5` | Per-device query timeout |
 | `QUERY_MIN_INTERVAL_SECONDS` | no | `2` | Rate limit: minimum time between real device queries; faster requests get a shared cached result |
 | `AUTO_REFRESH_SECONDS` | no | `30` | Interval of the page's auto-refresh |
@@ -186,8 +201,9 @@ location /debug {
 
 ## Versioning & releases
 
-Releases use **CalVer**: `YYYY.MM.DD` (UTC), with `.1`, `.2`, … appended for
-further releases on the same day. Every push to `main` automatically:
+Releases use **CalVer with a mandatory minor**: `YYYY.MM.DD.N` (UTC), i.e.
+`2026.07.19.1` for the first release of a day, `.2`, `.3`, … for further
+releases on the same day. Every push to `main` automatically:
 
 1. runs tests,
 2. builds and pushes the multi-arch image to GHCR, tagged
@@ -195,7 +211,7 @@ further releases on the same day. Every push to `main` automatically:
 3. creates a git tag + [GitHub release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases)
    with generated notes and standalone Linux binaries (amd64/arm64) attached.
 
-Pin the CalVer tag (e.g. `:2026.07.17`) in production if you don't want
+Pin the CalVer tag (e.g. `:2026.07.19.1`) in production if you don't want
 `latest` to move under you. The running version is shown in the page footer.
 
 ## Languages
@@ -244,7 +260,8 @@ installed produces the identical single binary.
 | `{BASE_PATH}/` | GET | The debug page |
 | `{BASE_PATH}/api/query` | POST/GET | Query all Shellys live (rate-limited, cached), append to history, return results incl. status codes |
 | `{BASE_PATH}/api/query/sensor?ep={idx}&key={key}` | POST/GET | Query one single sensor (its `Temperature`/`Humidity.GetStatus` RPC); `ep` is the 0-based endpoint index, `key` e.g. `temperature:100` |
-| `{BASE_PATH}/api/history` | GET | The in-memory history buffer; `?limit=N` returns only the newest N samples per sensor (the page charts use `limit=1000`) |
+| `{BASE_PATH}/api/results` | GET | The most recent (cached) query result **without touching the devices** — the page polls this every 5 s to stay live; `ts` is `0` while nothing has been queried yet |
+| `{BASE_PATH}/api/history` | GET | The in-memory history buffer; `?limit=N` returns only the newest N samples per sensor, `?since=<unix>` only samples from that time on (the page charts use both, driven by the selected time range) |
 | `{BASE_PATH}/manifest.webmanifest`, `{BASE_PATH}/sw.js` | GET | PWA manifest and service worker (app shell only; API responses are never cached) |
 | `{BASE_PATH}/api/history` | DELETE | Clear the in-memory history |
 | `{BASE_PATH}/api/provision/scan?ep={idx}` | POST/GET | Scan the endpoint's 1-Wire bus (`SensorAddon.OneWireScan`); returns probes with their linked component (or none) — only with `PROVISION_PASSPHRASE` set, requires the `X-Provision-Key` header |

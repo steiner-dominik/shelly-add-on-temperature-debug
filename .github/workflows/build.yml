@@ -31,15 +31,15 @@ jobs:
         with:
           fetch-depth: 0   # full history + tags, needed for CalVer counting
 
-      # CalVer: YYYY.MM.DD for the first release of a (UTC) day,
-      # YYYY.MM.DD.1, .2, … for further releases on the same day.
+      # CalVer with a mandatory minor: YYYY.MM.DD.1 for the first release of
+      # a (UTC) day, .2, .3, … for further releases on the same day.
       - name: Compute CalVer version
         id: ver
         if: github.event_name != 'pull_request'
         run: |
           base="$(date -u +%Y.%m.%d)"
-          version="$base"
-          n=0
+          n=1
+          version="$base.$n"
           while git rev-parse -q --verify "refs/tags/$version" >/dev/null; do
             n=$((n+1)); version="$base.$n"
           done

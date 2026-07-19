@@ -153,17 +153,17 @@ func TestHistoryClear(t *testing.T) {
 	h := newHistory(1 << 20)
 	h.record([]EndpointResult{{Name: "A", Sensors: []SensorResult{{Key: "temperature:100", Kind: "temperature", Name: "S", Value: f(20)}}}})
 	h.recordSensor("A", SensorResult{Key: "temperature:100", Kind: "temperature", Name: "S", Value: f(21)}, time.Now())
-	if got := len(h.snapshot(0)["A"]["temperature:100"].Samples); got != 2 {
+	if got := len(h.snapshot(0, 0)["A"]["temperature:100"].Samples); got != 2 {
 		t.Fatalf("got %d samples, want 2", got)
 	}
-	if got := len(h.snapshot(1)["A"]["temperature:100"].Samples); got != 1 {
+	if got := len(h.snapshot(1, 0)["A"]["temperature:100"].Samples); got != 1 {
 		t.Fatalf("limited snapshot: got %d samples, want 1", got)
 	}
-	if v := h.snapshot(1)["A"]["temperature:100"].Samples[0].V; v == nil || *v != 21 {
+	if v := h.snapshot(1, 0)["A"]["temperature:100"].Samples[0].V; v == nil || *v != 21 {
 		t.Fatalf("limited snapshot must keep the newest sample, got %+v", v)
 	}
 	h.clear()
-	if len(h.snapshot(0)) != 0 {
+	if len(h.snapshot(0, 0)) != 0 {
 		t.Fatal("history not empty after clear")
 	}
 }
@@ -191,5 +191,53 @@ func TestRenderMetrics(t *testing.T) {
 	// A failed sensor must not emit a value sample.
 	if strings.Contains(out, `key="temperature:101"} `) && strings.Contains(out, `shelly_debug_temperature_celsius{endpoint="Pool \"1\"",sensor="Broken"`) {
 		t.Error("broken sensor should not export a temperature value")
+	}
+}
+
+func TestHistorySince(t *testing.T) {
+	h := newHistory(1 << 20)
+	base := time.Now()
+	for i := 0; i < 5; i++ {
+		h.recordSensor("A", SensorResult{Key: "temperature:100", Kind: "temperature", Name: "S", Value: f(float64(20 + i))}, base.Add(time.Duration(i)*time.Minute))
+	}
+	since := base.Add(3 * time.Minute).Unix()
+	got := h.snapshot(0, since)["A"]["temperature:100"].Samples
+	if len(got) != 2 {
+		t.Fatalf("since snapshot: got %d samples, want 2", len(got))
+	}
+	if got[0].TS < since {
+		t.Fatalf("since snapshot returned a sample older than the cutoff: %+v", got[0])
+	}
+}
+
+func TestHandleResultsServesCacheWithoutQuerying(t *testing.T) {
+	s := &server{cfg: &Config{Token: ""}, lastStatus: map[string]string{}}
+
+	// No query yet: ts must be 0 and endpoints an empty array, not null.
+	w := httptest.NewRecorder()
+	s.handleResults(w, httptest.NewRequest(http.MethodGet, "/api/results", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("empty cache: got %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"ts":0`) || !strings.Contains(body, `"endpoints":[]`) {
+		t.Fatalf("empty cache response: %s", body)
+	}
+
+	s.lastMu.Lock()
+	s.lastResults = []EndpointResult{{Name: "A", Host: "a", Status: statusOK, Sensors: []SensorResult{}}}
+	s.lastAt = time.Unix(1784000000, 0)
+	s.lastMu.Unlock()
+	w = httptest.NewRecorder()
+	s.handleResults(w, httptest.NewRequest(http.MethodGet, "/api/results", nil))
+	body = w.Body.String()
+	if !strings.Contains(body, `"ts":1784000000`) || !strings.Contains(body, `"name":"A"`) {
+		t.Fatalf("cached response: %s", body)
+	}
+
+	w = httptest.NewRecorder()
+	s.handleResults(w, httptest.NewRequest(http.MethodPost, "/api/results", nil))
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST must be rejected, got %d", w.Code)
 	}
 }

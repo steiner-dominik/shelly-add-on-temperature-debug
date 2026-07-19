@@ -1,6 +1,7 @@
 package app
 
 import (
+	"sort"
 	"sync"
 	"time"
 )
@@ -120,9 +121,10 @@ func (h *history) clear() {
 }
 
 // snapshot returns a deep copy safe for JSON serialization. limit > 0 keeps
-// only the newest limit samples per sensor (used by the page charts so a
-// large buffer doesn't produce huge responses); limit <= 0 returns everything.
-func (h *history) snapshot(limit int) map[string]map[string]sensorHistory {
+// only the newest limit samples per sensor, since > 0 keeps only samples
+// recorded at or after that unix time (both used by the page charts so a
+// large buffer doesn't produce huge responses); zero values return everything.
+func (h *history) snapshot(limit int, since int64) map[string]map[string]sensorHistory {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	out := make(map[string]map[string]sensorHistory, len(h.data))
@@ -130,6 +132,10 @@ func (h *history) snapshot(limit int) map[string]map[string]sensorHistory {
 		m := make(map[string]sensorHistory, len(byKey))
 		for key, sh := range byKey {
 			src := sh.Samples
+			if since > 0 {
+				lo := sort.Search(len(src), func(i int) bool { return src[i].TS >= since })
+				src = src[lo:]
+			}
 			if limit > 0 && len(src) > limit {
 				src = src[len(src)-limit:]
 			}

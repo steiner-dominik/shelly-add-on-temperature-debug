@@ -133,6 +133,14 @@ main { width: 100%; max-width: 1080px; margin: 0 auto; padding: 14px 20px 40px; 
 .devchip .cnt { font-family: var(--mono); font-weight: 400; color: var(--muted); }
 .dot-s { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .dot-s.ok { background: var(--good); } .dot-s.warn { background: var(--warn); } .dot-s.crit { background: var(--crit); }
+/* current readings of all sensors, one glance, no scrolling */
+.readings {
+  flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 16px;
+  font-size: .78rem; color: var(--text-2);
+}
+.reading { white-space: nowrap; }
+.reading b { font-family: var(--mono); font-weight: 600; color: var(--text); }
+.reading.bad b { color: var(--crit); }
 
 /* ---- banner / login ---- */
 .banner {
@@ -176,6 +184,12 @@ main { width: 100%; max-width: 1080px; margin: 0 auto; padding: 14px 20px 40px; 
 .btn.danger { color: var(--crit); }
 .btn.danger:hover { background: var(--crit-bg); border-color: var(--crit); }
 .btn.active { border-color: var(--crit); color: var(--crit); }
+.rangesel {
+  font: inherit; font-size: .8rem; font-weight: 600;
+  padding: 6px 8px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  box-shadow: var(--shadow);
+}
 .auto { display: inline-flex; gap: 6px; align-items: center; color: var(--text-2); font-size: .8rem; cursor: pointer; user-select: none; }
 .lastq { color: var(--muted); font-size: .78rem; font-family: var(--mono); margin-left: auto; }
 .hint { color: var(--text-2); font-size: .82rem; margin: -6px 0 12px; }
@@ -320,7 +334,14 @@ footer { border-top: 1px solid var(--border); background: var(--panel); margin-t
   display: flex; flex-direction: column; gap: 10px;
 }
 .footer-inner a { color: inherit; }
-.footer-legend { line-height: 1.7; }
+.footer-legend summary {
+  cursor: pointer; user-select: none;
+  font-weight: 600; color: var(--text-2);
+}
+.footer-legend summary:hover { color: var(--text); }
+.legendtable { border-collapse: collapse; margin-top: 8px; }
+.legendtable td { padding: 5px 14px 5px 0; border-top: 1px solid var(--grid); vertical-align: top; line-height: 1.5; }
+.legendtable td:first-child { white-space: nowrap; }
 .footer-notes { color: var(--muted); line-height: 1.6; }
 .footer-notes span { display: block; }
 .footer-bottom {

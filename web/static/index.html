@@ -37,6 +37,7 @@
   <div class="statusstrip-inner">
     <div class="agg" id="aggstats"></div>
     <div class="devchips" id="devchips"></div>
+    <div class="readings" id="readings"></div>
   </div>
 </div>
 
@@ -59,6 +60,7 @@
   <div class="toolbar" id="toolbar" hidden>
     <button class="btn primary" id="querybtn"></button>
     <button class="btn" id="wigglebtn"></button>
+    <select id="rangesel" class="rangesel"></select>
     <label class="auto"><input type="checkbox" id="autorefresh"><span id="autolabel"></span></label>
     <button class="btn" id="csvbtn"></button>
     <button class="btn" id="provbtn" hidden></button>
@@ -89,7 +91,10 @@
 
 <footer>
   <div class="footer-inner">
-    <div class="footer-legend" id="legendline"></div>
+    <details class="footer-legend" id="legendbox">
+      <summary id="legendtitle"></summary>
+      <table class="legendtable" id="legendtable"></table>
+    </details>
     <div class="footer-notes">
       <span id="historynote"></span>
       <span id="disclaimer"></span>

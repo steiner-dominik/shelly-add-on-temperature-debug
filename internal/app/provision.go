@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"regexp"
 	"sort"
@@ -136,9 +137,17 @@ func (s *server) handleProvisionScan(w http.ResponseWriter, r *http.Request) {
 	client := newShellyClient(ep, s.cfg.Timeout)
 	devices, err := oneWireScan(ctx, client)
 	if err != nil {
+		log.Printf("provisioning: 1-Wire scan on %s failed: %v", ep.Name, err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
+	newCount := 0
+	for _, d := range devices {
+		if d.Component == "" {
+			newCount++
+		}
+	}
+	log.Printf("provisioning: 1-Wire scan on %s found %d probe(s), %d new", ep.Name, len(devices), newCount)
 	dm := s.meta.get(ctx, client, ep.BaseURL)
 	for i := range devices {
 		if devices[i].Component != "" {
@@ -275,8 +284,11 @@ func (s *server) handleProvisionAdd(w http.ResponseWriter, r *http.Request) {
 	job.Component = component
 	s.provMu.Unlock()
 
+	log.Printf("provisioning: added probe %s on %s as %s (%q), rebooting the device", dev.Addr, ep.Name, component, name)
+
 	// The link only becomes active after a restart (per the SensorAddon docs).
 	if _, err := client.rpc(ctx, "Shelly.Reboot"); err != nil {
+		log.Printf("provisioning: reboot of %s failed: %v", ep.Name, err)
 		s.setJob(jobKey, provStateError, "sensor was added, but rebooting the device failed: "+err.Error())
 		writeJSON(w, http.StatusOK, map[string]any{"job": s.jobCopy(jobKey)})
 		return
@@ -304,16 +316,19 @@ func (s *server) finalizeProvision(idx int, jobKey, component, name string) {
 				map[string]any{"id": id, "config": map[string]any{"name": name}})
 			cancel()
 			if err != nil {
+				log.Printf("provisioning: %s on %s is active, but setting its name failed: %v", component, ep.Name, err)
 				s.setJob(jobKey, provStateError, "sensor is active, but setting its name failed: "+err.Error())
 				return
 			}
 			s.meta.invalidate(ep.BaseURL)
+			log.Printf("provisioning: %s on %s is up and named %q", component, ep.Name, name)
 			s.setJob(jobKey, provStateDone, "")
 			return
 		}
 		cancel()
 		lastErr = err
 		if time.Now().After(deadline) {
+			log.Printf("provisioning: %s did not report %s after the reboot: %v", ep.Name, component, lastErr)
 			s.setJob(jobKey, provStateError, "device did not report the new sensor after the reboot: "+lastErr.Error())
 			return
 		}

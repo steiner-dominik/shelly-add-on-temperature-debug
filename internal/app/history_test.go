@@ -19,7 +19,7 @@ func TestHistoryMemoryBudgetEvictsOldestOverall(t *testing.T) {
 	rec("temperature:101", 13, 4)
 	rec("temperature:100", 14, 5) // exceeds the budget → ts=10 must go
 
-	snap := h.snapshot(0)["A"]
+	snap := h.snapshot(0, 0)["A"]
 	s100, s101 := snap["temperature:100"].Samples, snap["temperature:101"].Samples
 	if len(s100)+len(s101) != 4 {
 		t.Fatalf("total samples = %d, want 4", len(s100)+len(s101))
@@ -35,7 +35,7 @@ func TestHistoryMemoryBudgetEvictsOldestOverall(t *testing.T) {
 	for i := int64(0); i < 10; i++ {
 		rec("temperature:100", 20+i, 9)
 	}
-	snap = h.snapshot(0)["A"]
+	snap = h.snapshot(0, 0)["A"]
 	total := len(snap["temperature:100"].Samples) + len(snap["temperature:101"].Samples)
 	if total != 4 {
 		t.Fatalf("after burst: total samples = %d, want 4", total)

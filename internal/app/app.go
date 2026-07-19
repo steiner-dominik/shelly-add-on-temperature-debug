@@ -49,10 +49,17 @@ type server struct {
 
 	// last-result cache: device queries are rate-limited so an internet-facing
 	// page cannot be used to hammer the Shellys. Concurrent and rapid repeat
-	// requests (including Prometheus scrapes) share one result.
+	// requests (including Prometheus scrapes) share one result. lastMu guards
+	// lastAt/lastResults so /api/results can read them without waiting for an
+	// in-flight device query.
 	queryMu     chan struct{} // buffered(1), used as a mutex that respects ctx
+	lastMu      sync.Mutex
 	lastAt      time.Time
 	lastResults []EndpointResult
+
+	// previous status per endpoint/sensor, for change logging only
+	statusMu   sync.Mutex
+	lastStatus map[string]string
 
 	// per-sensor query cache, same rate-limit contract as the full query
 	sensorMu    sync.Mutex
@@ -80,6 +87,7 @@ func Run(version string) {
 		queryMu:     make(chan struct{}, 1),
 		sensorCache: map[string]sensorCacheEntry{},
 		provJobs:    map[string]*provisionJob{},
+		lastStatus:  map[string]string{},
 	}
 	rawIndex, err := web.FS.ReadFile("static/index.html")
 	if err != nil {
@@ -132,6 +140,7 @@ func Run(version string) {
 	})
 	mux.HandleFunc(base+"/locales/{file}", serveLocale)
 	mux.HandleFunc(base+"/api/query", s.requireToken(s.handleQuery))
+	mux.HandleFunc(base+"/api/results", s.requireToken(s.handleResults))
 	mux.HandleFunc(base+"/api/query/sensor", s.requireToken(s.handleQuerySensor))
 	mux.HandleFunc(base+"/api/history", s.requireToken(s.handleHistory))
 	mux.HandleFunc(base+"/api/provision/scan", s.requireToken(s.requireProvision(s.handleProvisionScan)))
@@ -234,16 +243,81 @@ func (s *server) queryCached(reqCtx context.Context) (results []EndpointResult, 
 	}
 	defer func() { <-s.queryMu }()
 
-	if s.lastResults != nil && time.Since(s.lastAt) < s.cfg.MinInterval {
-		return s.lastResults, s.lastAt, true
+	s.lastMu.Lock()
+	results, at = s.lastResults, s.lastAt
+	s.lastMu.Unlock()
+	if results != nil && time.Since(at) < s.cfg.MinInterval {
+		return results, at, true
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.Timeout+2*time.Second)
 	defer cancel()
-	s.lastResults = queryAll(ctx, s.cfg, s.meta)
-	s.lastAt = time.Now()
-	s.history.record(s.lastResults)
-	return s.lastResults, s.lastAt, true
+	started := time.Now()
+	results = queryAll(ctx, s.cfg, s.meta)
+	at = time.Now()
+	s.lastMu.Lock()
+	s.lastResults, s.lastAt = results, at
+	s.lastMu.Unlock()
+	s.history.record(results)
+	s.logQueryOutcome(results, at.Sub(started))
+	return results, at, true
+}
+
+// logQueryOutcome logs status transitions (per endpoint and per sensor) plus
+// a summary line whenever a transition happened — steady state stays quiet,
+// even with background polling enabled and even while a sensor is chronically
+// broken (its transition was already logged once).
+func (s *server) logQueryOutcome(results []EndpointResult, took time.Duration) {
+	epOK, senOK, senTotal := 0, 0, 0
+	changed := false
+	for _, ep := range results {
+		if ep.Status == statusOK {
+			epOK++
+		}
+		detail := ""
+		if ep.Error != "" {
+			detail = ": " + ep.Error
+		}
+		if s.logStatusChange("endpoint "+ep.Name, ep.Name, ep.Status, detail) {
+			changed = true
+		}
+		for _, sn := range ep.Sensors {
+			senTotal++
+			if sn.Status == statusOK {
+				senOK++
+			}
+			detail := ""
+			if len(sn.Errors) > 0 {
+				detail = ": " + strings.Join(sn.Errors, ", ")
+			}
+			if s.logStatusChange(fmt.Sprintf("%s %s (%q)", ep.Name, sn.Key, sn.Name), ep.Name+"/"+sn.Key, sn.Status, detail) {
+				changed = true
+			}
+		}
+	}
+	if changed {
+		log.Printf("query: %d/%d device(s) ok, %d/%d sensor(s) ok (%.2fs)",
+			epOK, len(results), senOK, senTotal, took.Seconds())
+	}
+}
+
+// logStatusChange records the status under key and logs when it differs from
+// the previous one (first observation only when it is not ok). Reports
+// whether a line was logged.
+func (s *server) logStatusChange(what, key, status, detail string) bool {
+	s.statusMu.Lock()
+	prev, seen := s.lastStatus[key]
+	s.lastStatus[key] = status
+	s.statusMu.Unlock()
+	switch {
+	case !seen && status != statusOK:
+		log.Printf("%s: %s%s", what, status, detail)
+	case seen && prev != status:
+		log.Printf("%s: %s -> %s%s", what, prev, status, detail)
+	default:
+		return false
+	}
+	return true
 }
 
 func (s *server) handleQuery(w http.ResponseWriter, r *http.Request) {
@@ -255,15 +329,41 @@ func (s *server) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ts":                 at.Unix(),
+	writeJSON(w, http.StatusOK, s.queryPayload(results, at))
+}
+
+func (s *server) queryPayload(results []EndpointResult, at time.Time) map[string]any {
+	ts := int64(0)
+	if !at.IsZero() {
+		ts = at.Unix()
+	}
+	if results == nil {
+		results = []EndpointResult{}
+	}
+	return map[string]any{
+		"ts":                 ts,
 		"version":            appVersion,
 		"minIntervalSec":     int(s.cfg.MinInterval / time.Second),
 		"autoRefreshSec":     s.cfg.AutoRefreshSec,
 		"autoRefreshDefault": s.cfg.AutoRefreshDefault,
 		"provisioning":       s.cfg.ProvisionPass != "",
 		"endpoints":          results,
-	})
+	}
+}
+
+// handleResults returns the most recent query result without ever touching
+// the devices — the page polls this every few seconds to pick up readings
+// produced by background polling or by other viewers. ts is 0 while no query
+// has happened yet.
+func (s *server) handleResults(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "use GET"})
+		return
+	}
+	s.lastMu.Lock()
+	results, at := s.lastResults, s.lastAt
+	s.lastMu.Unlock()
+	writeJSON(w, http.StatusOK, s.queryPayload(results, at))
 }
 
 // handleQuerySensor queries one single sensor on one Shelly (its dedicated
@@ -308,6 +408,11 @@ func (s *server) querySensorCached(idx int, key string) (SensorResult, time.Time
 	at := time.Now()
 	s.sensorCache[cacheKey] = sensorCacheEntry{res: res, at: at}
 	s.history.recordSensor(ep.Name, res, at)
+	detail := ""
+	if len(res.Errors) > 0 {
+		detail = ": " + strings.Join(res.Errors, ", ")
+	}
+	s.logStatusChange(fmt.Sprintf("%s %s (%q)", ep.Name, res.Key, res.Name), ep.Name+"/"+res.Key, res.Status, detail)
 	return res, at
 }
 
@@ -322,23 +427,30 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleHistory serves the in-memory buffer. GET returns it — optionally only
-// the last ?limit=N samples per sensor; the page charts use that so a large
-// HISTORY_SIZE doesn't ship megabytes on every refresh. DELETE clears it.
+// the last ?limit=N samples per sensor and/or only samples with ?since=<unix>
+// or newer; the page charts use both so a large buffer doesn't ship megabytes
+// on every refresh. DELETE clears it.
 func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodDelete {
 		s.history.clear()
+		log.Printf("history cleared via API")
 		writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
 		return
 	}
-	limit := 0
+	limit, since := 0, int64(0)
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			limit = n
 		}
 	}
+	if v := r.URL.Query().Get("since"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			since = n
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"maxMb":     s.cfg.HistoryMaxMB,
-		"endpoints": s.history.snapshot(limit),
+		"endpoints": s.history.snapshot(limit, since),
 	})
 }
 

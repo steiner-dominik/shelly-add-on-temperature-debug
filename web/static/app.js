@@ -62,9 +62,17 @@ function applyChrome() {
   $("provkey").placeholder = t("provKeyPlaceholder");
   $("provunlock").textContent = t("unlock");
   if (!$("provpanel").hidden) renderProv();
-  const lg = [["ok", "legendOk"], ["reset85", "legendReset85"], ["read_error", "legendReadError"], ["missing", "legendMissing"]]
-    .map(([st, key]) => `<b>${esc(L.status[st])}</b> — ${esc(t(key))}`).join(" · ");
-  $("legendline").innerHTML = `${esc(t("legendTitle"))} ${lg}`;
+  const rs = $("rangesel");
+  rs.setAttribute("aria-label", t("rangeLabel"));
+  rs.title = t("rangeLabel");
+  rs.innerHTML = RANGES.map(([v, key]) =>
+    `<option value="${v}"${v === rangeSec ? " selected" : ""}>${esc(t(key))}</option>`).join("");
+  $("legendtitle").textContent = t("legendTitle");
+  $("legendtable").innerHTML = [
+    ["ok", "legendOk"], ["reset85", "legendReset85"], ["read_error", "legendReadError"], ["missing", "legendMissing"],
+    ["unreachable", "legendUnreachable"], ["auth_failed", "legendAuthFailed"], ["no_sensors", "legendNoSensors"],
+  ].map(([st, key]) =>
+    `<tr><td><span class="chip ${CHIP[st] || "warn"}">${esc(L.status[st] || st)}</span></td><td>${esc(t(key))}</td></tr>`).join("");
   const th = $("themesel");
   const cur = localStorage.getItem("theme") || "auto";
   th.innerHTML = [["auto", "themeAuto"], ["light", "themeLight"], ["dark", "themeDark"]]
@@ -154,9 +162,42 @@ let lastData = null, lastHist = null, queryBusy = false;
 let minIntervalMs = 2000;  // reported by the server with every query
 let autoRefreshSec = 30;   // ditto (AUTO_REFRESH_SECONDS)
 
-// Charts fetch at most this many samples per sensor; the full buffer
-// (HISTORY_SIZE) is only pulled for the CSV export.
-const CHART_HISTORY_LIMIT = 1000;
+// --- chart time range ---------------------------------------------------
+// The charts show a selectable window of the history (default: last 24 h).
+// The server filters with ?since=, so long-running instances don't ship
+// their whole buffer on every refresh; the CSV export still gets everything.
+const RANGES = [
+  [900, "range15m"], [3600, "range1h"], [21600, "range6h"],
+  [86400, "range24h"], [604800, "range7d"], [0, "rangeAll"],
+];
+// Safety cap per sensor even for "all history" (charts stride to ~600 points
+// anyway); generous enough for 7 days of 60 s background polling.
+const CHART_HISTORY_LIMIT = 12000;
+let rangeSec = (() => {
+  const v = parseInt(localStorage.getItem("chartRange"), 10);
+  return RANGES.some(r => r[0] === v) ? v : 86400;
+})();
+const fetchHist = () => {
+  const since = rangeSec > 0 ? "&since=" + (Math.floor(Date.now() / 1000) - rangeSec) : "";
+  return api("/api/history?limit=" + CHART_HISTORY_LIMIT + since);
+};
+// persist=false is used by the wiggle test: the automatic zoom to 15 min
+// must not overwrite the user's stored preference.
+async function setRange(v, { persist = true } = {}) {
+  rangeSec = v;
+  if (persist) localStorage.setItem("chartRange", String(v));
+  const sel = $("rangesel");
+  if (sel.value !== String(v)) sel.value = String(v);
+  if (lastData) {
+    try {
+      lastHist = await fetchHist();
+      render(lastData, lastHist);
+    } catch (e) {
+      if (e && e.unauthorized) showLocked(true);
+    }
+  }
+}
+$("rangesel").addEventListener("change", e => setRange(Number(e.target.value)));
 
 async function runQuery() {
   if (queryBusy) return;
@@ -165,7 +206,7 @@ async function runQuery() {
   btn.disabled = true; btn.textContent = t("querying");
   try {
     const data = await api("/api/query", { method: "POST" });
-    const hist = await api("/api/history?limit=" + CHART_HISTORY_LIMIT);
+    const hist = await fetchHist();
     if (data.minIntervalSec != null) minIntervalMs = data.minIntervalSec * 1000;
     applyServerRefreshConfig(data);
     lastData = data; lastHist = hist;
@@ -205,7 +246,7 @@ $("results").addEventListener("click", async e => {
       const i = ep.sensors.findIndex(s => s.key === resp.sensor.key);
       if (i >= 0) ep.sensors[i] = resp.sensor; else ep.sensors.push(resp.sensor);
     }
-    lastHist = await api("/api/history?limit=" + CHART_HISTORY_LIMIT);
+    lastHist = await fetchHist();
     render(lastData, lastHist);
     setLive("ok");
   } catch (err) {
@@ -220,7 +261,7 @@ $("clearbtn").addEventListener("click", async () => {
   if (!confirm(t("clearHistoryConfirm"))) return;
   try {
     await api("/api/history", { method: "DELETE" });
-    lastHist = await api("/api/history?limit=" + CHART_HISTORY_LIMIT);
+    lastHist = await fetchHist();
     if (lastData) render(lastData, lastHist);
   } catch (e) {
     if (e && e.unauthorized) showLocked(true);
@@ -489,6 +530,10 @@ function updateWiggleBtn() {
 }
 function startWiggle() {
   wiggleUntil = Date.now() + WIGGLE_MS;
+  // Troubleshooting wants the freshest picture: zoom the charts to the last
+  // 15 minutes (without persisting, so the user's own choice comes back on
+  // the next visit) — the intermittent contacts show up at full resolution.
+  if (rangeSec !== 900) setRange(900, { persist: false });
   $("wigglebtn").classList.add("active");
   $("wigglehint").hidden = false;
   wiggleTimer = setInterval(() => {
@@ -539,6 +584,34 @@ function applyServerRefreshConfig(data) {
 $("autorefresh").checked = localStorage.getItem("autoRefresh") === "1";
 $("autorefresh").addEventListener("change", e => setAutoRefresh(e.target.checked));
 armAutoRefresh($("autorefresh").checked);
+
+// --- live view refresh -------------------------------------------------
+// Every few seconds the page picks up the newest cached result from the
+// server (/api/results never touches the devices), so readings produced by
+// background polling — or by somebody else pressing the query button —
+// appear without any interaction. Skipped while hidden, locked, or querying.
+const LIVE_REFRESH_MS = 5000;
+async function pollResults() {
+  if (document.hidden || !$("loginbox").hidden || queryBusy) return;
+  try {
+    const data = await api("/api/results");
+    if (!data.ts || (lastData && data.ts <= lastData.ts)) return;
+    applyServerRefreshConfig(data);
+    if (data.minIntervalSec != null) minIntervalMs = data.minIntervalSec * 1000;
+    lastData = data;
+    lastHist = await fetchHist();
+    showUnlocked();
+    render(data, lastHist);
+    $("lastq").textContent = fmt(t("lastQuery"), { time: new Date(data.ts * 1000).toLocaleTimeString() });
+    setLive("ok");
+    hideBanner();
+  } catch (e) {
+    if (e && e.unauthorized) showLocked(localStorage.getItem("debugToken") != null);
+    // Plain network errors: keep the current view; the query paths own the
+    // disconnected banner.
+  }
+}
+setInterval(pollResults, LIVE_REFRESH_MS);
 
 // --- rendering --------------------------------------------------------
 const CHIP = {
@@ -592,6 +665,13 @@ function renderStrip(data) {
     return `<button class="devchip${active ? " active" : ""}${dim ? " dim" : ""}" data-name="${esc(ep.name)}" type="button">
       <span class="dot-s ${sev}"></span>${esc(ep.name)}<span class="cnt">${ok}/${ep.sensors.length}</span></button>`;
   }).join("");
+  // At-a-glance current readings of every sensor, for people who open the
+  // page just to see the temperatures rather than to troubleshoot.
+  $("readings").innerHTML = eps.flatMap(ep => ep.sensors.map(s => {
+    const label = eps.length > 1 ? `${ep.name} · ${s.name}` : s.name;
+    return `<span class="reading${s.status === "ok" ? "" : " bad"}" title="${esc(label)}">${esc(s.name)}
+      <b>${fmtV(s.value, s.kind)}</b></span>`;
+  })).join("");
   $("statusstrip").hidden = false;
 }
 
