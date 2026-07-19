@@ -20,6 +20,9 @@ name: shelly-debug
 services:
   shelly-debug:
     image: ghcr.io/steiner-dominik/shelly-add-on-temperature-debug:latest
+    # Fixed container name for stable `docker logs/exec shelly-debug` and
+    # log-collector configs.
+    container_name: shelly-debug
     # Pin a CalVer tag in production so "latest" can't move under you, e.g.:
     # image: ghcr.io/steiner-dominik/shelly-add-on-temperature-debug:2026.07.19.1
     restart: unless-stopped

@@ -39,6 +39,8 @@ var staticAssets = map[string]string{
 	"manifest.webmanifest": "application/manifest+json",
 	"icon-192.png":         "image/png",
 	"icon-512.png":         "image/png",
+	"icon-light-192.png":   "image/png",
+	"icon-light-512.png":   "image/png",
 	"icon-maskable.png":    "image/png",
 }
 

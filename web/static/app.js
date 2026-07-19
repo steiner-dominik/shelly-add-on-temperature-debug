@@ -43,12 +43,23 @@ async function loadLocales() {
 function applyChrome() {
   $("subtitle").textContent = t("subtitle");
   $("search").placeholder = t("searchPlaceholder");
+  // Toolbar buttons carry deliberately short labels (they must fit one row
+  // even in German on a phone); the full explanation lives in title/aria.
+  const btnTitle = (id, key) => {
+    $(id).title = t(key);
+    $(id).setAttribute("aria-label", t(key));
+  };
   $("querybtn").textContent = t("queryBtn");
+  btnTitle("querybtn", "queryBtnTitle");
   updateWiggleBtn();
+  btnTitle("wigglebtn", "wiggleBtnTitle");
   $("wigglehint").textContent = t("wiggleHint");
   $("autolabel").textContent = fmt(t("autoRefresh"), { s: autoRefreshSec });
+  $("autolabel").parentElement.title = fmt(t("autoRefreshTitle"), { s: autoRefreshSec });
   $("csvbtn").textContent = t("downloadCsv");
-  $("clearbtn").textContent = t("clearHistory");
+  btnTitle("csvbtn", "downloadCsvTitle");
+  $("clearbtn").textContent = "🗑";
+  btnTitle("clearbtn", "clearHistory");
   $("tokenprompt").textContent = t("tokenPrompt");
   $("tokeninput").placeholder = t("tokenPlaceholder");
   $("tokensave").textContent = t("unlock");
@@ -56,6 +67,7 @@ function applyChrome() {
   $("disclaimer").textContent = t("disclaimer");
   $("footerby").textContent = t("footerBy");
   $("provbtn").textContent = t("provBtn");
+  btnTitle("provbtn", "provTitle");
   $("provtitle").textContent = t("provTitle");
   $("provintro").textContent = t("provIntro");
   $("provlocknote").textContent = t("provLockNote");
@@ -131,7 +143,9 @@ $("tokensave").addEventListener("click", () => {
   localStorage.setItem("debugToken", v);
   $("tokeninput").value = "";
   showUnlocked();
-  runQuery();
+  // Validates the token against the cached-results endpoint — no device
+  // query (and no history sample) just because somebody logged in.
+  initialLoad();
 });
 $("tokeninput").addEventListener("keydown", e => { if (e.key === "Enter") $("tokensave").click(); });
 
@@ -566,7 +580,22 @@ function setAutoRefresh(on) {
   localStorage.setItem("autoRefresh", on ? "1" : "0");
   armAutoRefresh(on);
 }
+// The page's own release version, substituted into the footer at serve time.
+// Compared against the version every API response reports: a mismatch means
+// a new release was deployed while this (possibly installed-PWA) page was
+// open — do one full reload to pick up the new shell. The sessionStorage
+// guard prevents a reload loop if the reload doesn't change the shell (e.g.
+// an offline PWA serving the old cache).
+const PAGE_VERSION = (document.querySelector(".footer-ver") || {}).textContent || "";
+function checkServerVersion(data) {
+  if (!data.version || !PAGE_VERSION || data.version === PAGE_VERSION) return;
+  if (sessionStorage.getItem("reloadedForVersion") === data.version) return;
+  sessionStorage.setItem("reloadedForVersion", data.version);
+  location.reload();
+}
+
 function applyServerRefreshConfig(data) {
+  checkServerVersion(data);
   $("provbtn").hidden = !data.provisioning;
   if (!data.provisioning) $("provpanel").hidden = true;
   if (data.autoRefreshSec != null && data.autoRefreshSec !== autoRefreshSec) {
@@ -591,6 +620,37 @@ armAutoRefresh($("autorefresh").checked);
 // background polling — or by somebody else pressing the query button —
 // appear without any interaction. Skipped while hidden, locked, or querying.
 const LIVE_REFRESH_MS = 5000;
+
+// Initial page load: show the newest cached result only — deliberately NOT a
+// device query, so merely opening (or reloading) the page never appends to
+// the history. Fresh samples come from background polling, auto-refresh, or
+// the query button. Also serves as the auth probe (401 → login card).
+async function initialLoad() {
+  try {
+    const data = await api("/api/results");
+    applyServerRefreshConfig(data);
+    if (data.minIntervalSec != null) minIntervalMs = data.minIntervalSec * 1000;
+    showUnlocked();
+    if (data.ts) {
+      lastData = data;
+      lastHist = await fetchHist();
+      render(data, lastHist);
+      $("lastq").textContent = fmt(t("lastQuery"), { time: new Date(data.ts * 1000).toLocaleTimeString() });
+      setLive("ok");
+    } else {
+      $("results").innerHTML = `<p class="empty">${esc(t("noDataYet"))}</p>`;
+      setLive("idle");
+    }
+  } catch (e) {
+    if (e && e.unauthorized) {
+      showLocked(localStorage.getItem("debugToken") != null);
+    } else {
+      setLive("down");
+      $("results").innerHTML = `<p class="empty">${esc(fmt(t("queryFailed"), { err: e.message || e }))}</p>`;
+    }
+  }
+}
+
 async function pollResults() {
   if (document.hidden || !$("loginbox").hidden || queryBusy) return;
   try {
@@ -666,12 +726,15 @@ function renderStrip(data) {
       <span class="dot-s ${sev}"></span>${esc(ep.name)}<span class="cnt">${ok}/${ep.sensors.length}</span></button>`;
   }).join("");
   // At-a-glance current readings of every sensor, for people who open the
-  // page just to see the temperatures rather than to troubleshoot.
-  $("readings").innerHTML = eps.flatMap(ep => ep.sensors.map(s => {
-    const label = eps.length > 1 ? `${ep.name} · ${s.name}` : s.name;
-    return `<span class="reading${s.status === "ok" ? "" : " bad"}" title="${esc(label)}">${esc(s.name)}
-      <b>${fmtV(s.value, s.kind)}</b></span>`;
-  })).join("");
+  // page just to see the temperatures rather than to troubleshoot — grouped
+  // per Shelly, one round bubble per sensor. The device label is dropped
+  // when only one device is configured (the chips above already name it).
+  $("readings").innerHTML = eps.map(ep => {
+    const bubbles = ep.sensors.map(s =>
+      `<span class="rbub${s.status === "ok" ? "" : " bad"}" title="${esc(ep.name + " · " + s.name)}">${esc(s.name)}
+        <b>${fmtV(s.value, s.kind)}</b></span>`).join("");
+    return `<span class="rgroup">${eps.length > 1 ? `<span class="rgdev">${esc(ep.name)}</span>` : ""}${bubbles}</span>`;
+  }).join("");
   $("statusstrip").hidden = false;
 }
 
@@ -704,6 +767,7 @@ function trendFor(samples, kind) {
 }
 
 function render(data, hist) {
+  measureChartW();
   renderStrip(data);
   const out = [];
   data.endpoints.forEach((ep, epIdx) => {
@@ -757,7 +821,46 @@ const fmtClock = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-dig
 
 // One line chart per endpoint and sensor kind: x = query time, y = value.
 // Failed reads (v null) break the line and are marked with an ✕ under the plot.
-const chartData = {}; // chartId -> {tsList, series} for tooltip lookup
+const chartData = {}; // chartId -> {tsList, series, W} for tooltip lookup
+
+// The SVG viewBox width follows the real on-screen width (re-measured on
+// every render, re-rendered on resize), so axis text renders 1:1 instead of
+// being squeezed by preserveAspectRatio="none" on narrow phone screens.
+let chartW = 820;
+function measureChartW() {
+  const w = $("results").clientWidth || 852;
+  const cardPad = window.innerWidth <= 640 ? 26 : 34; // card padding + border
+  chartW = Math.max(300, Math.min(1600, w - cardPad));
+}
+{
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (lastData) render(lastData, lastHist); }, 200);
+  });
+}
+
+// Evenly spaced x-axis ticks on "nice" local-time boundaries (full minutes /
+// hours / days), as many as the chart width comfortably fits.
+const TICK_STEPS = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600,
+  43200, 86400, 172800, 345600, 604800];
+function xTicks(t0, t1, width) {
+  const span = t1 - t0;
+  if (span <= 0) return [];
+  const maxTicks = Math.max(2, Math.floor(width / 100));
+  const step = TICK_STEPS.find(s => span / s <= maxTicks) || TICK_STEPS[TICK_STEPS.length - 1];
+  // Align to local time so labels land on :00/:30/midnight, not UTC offsets.
+  const tzOff = new Date(t0 * 1000).getTimezoneOffset() * 60;
+  const ticks = [];
+  for (let ts = Math.ceil((t0 - tzOff) / step) * step + tzOff; ts <= t1; ts += step) ticks.push(ts);
+  return ticks;
+}
+const fmtTick = (ts, span) => {
+  const d = new Date(ts * 1000);
+  const hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return span > 86400 ? d.toLocaleDateString([], { day: "numeric", month: "numeric" }) + " " + hm : hm;
+};
+
 function chartFor(ep, histSensors, epIdx, kind, colors, titledKind) {
   const sensors = ep.sensors.filter(s => s.kind === kind && histSensors[s.key]);
   const series = sensors.map(s => ({
@@ -769,7 +872,8 @@ function chartFor(ep, histSensors, epIdx, kind, colors, titledKind) {
   const tsList = [...tsSet].sort((a, b) => a - b);
   if (!tsList.length) return "";
   const chartId = epIdx + ":" + kind;
-  chartData[chartId] = { tsList, series };
+  const W = chartW;
+  chartData[chartId] = { tsList, series, W };
 
   // Keep the SVG light with long histories: draw at most MAX_POINTS columns
   // (strided, always keeping the newest) and drop the per-point circles once
@@ -781,7 +885,7 @@ function chartFor(ep, histSensors, epIdx, kind, colors, titledKind) {
     plotTs = plotTs.filter((_, i) => i % stride === 0 || i === tsList.length - 1);
   }
 
-  const W = 820, H = 180, padL = 44, padR = 10, padT = 10, padB = 26;
+  const H = 180, padL = 44, padR = 10, padT = 10, padB = 26;
   const values = [];
   series.forEach(s => s.byTs.forEach(sm => { if (sm.v != null) values.push(sm.v); }));
   let lo = values.length ? Math.min(...values) : 0, hi = values.length ? Math.max(...values) : 1;
@@ -797,8 +901,23 @@ function chartFor(ep, histSensors, epIdx, kind, colors, titledKind) {
     g += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="var(--grid)" stroke-width="1"/>`;
     g += `<text x="${padL - 6}" y="${yy + 4}" text-anchor="end">${v.toFixed(1)}${AXIS_UNIT[kind] || ""}</text>`;
   }
-  g += `<text x="${padL}" y="${H - 8}">${fmtClock(t0)}</text>`;
-  if (t1 !== t0) g += `<text x="${W - padR}" y="${H - 8}" text-anchor="end">${fmtClock(t1)}</text>`;
+  // X axis: several timestamps on nice boundaries (with a faint gridline
+  // each), not just the first and last sample.
+  const ticks = xTicks(t0, t1, W - padL - padR);
+  if (ticks.length >= 2) {
+    const span = t1 - t0;
+    ticks.forEach(ts => {
+      const xx = x(ts);
+      g += `<line x1="${xx.toFixed(1)}" y1="${padT}" x2="${xx.toFixed(1)}" y2="${H - padB}" stroke="var(--grid)" stroke-width="1"/>`;
+      // Skip labels whose centered text would be clipped at the plot edges.
+      if (xx >= padL + 24 && xx <= W - padR - 30) {
+        g += `<text x="${xx.toFixed(1)}" y="${H - 8}" text-anchor="middle">${fmtTick(ts, span)}</text>`;
+      }
+    });
+  } else {
+    g += `<text x="${padL}" y="${H - 8}">${fmtClock(t0)}</text>`;
+    if (t1 !== t0) g += `<text x="${W - padR}" y="${H - 8}" text-anchor="end">${fmtClock(t1)}</text>`;
+  }
 
   series.forEach(s => {
     const color = SERIES[s.ci];
@@ -842,9 +961,9 @@ function chartFor(ep, histSensors, epIdx, kind, colors, titledKind) {
 function bindTooltips() {
   const tt = $("tooltip");
   document.querySelectorAll("svg.chart").forEach(svg => {
-    const { tsList, series } = chartData[svg.dataset.chart] || {};
+    const { tsList, series, W } = chartData[svg.dataset.chart] || {};
     if (!tsList) return;
-    const W = 820, padL = 44, padR = 10;
+    const padL = 44, padR = 10;
     const t0 = tsList[0], t1 = tsList[tsList.length - 1];
     svg.addEventListener("mousemove", e => {
       const r = svg.getBoundingClientRect();
@@ -877,8 +996,26 @@ function bindTooltips() {
 
 // --- boot -------------------------------------------------------------
 // PWA: relative path keeps the scope correct under any BASE_PATH (and
-// behind Home Assistant ingress).
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+// behind Home Assistant ingress). When a new release replaces the service
+// worker (its cache name carries the version), the page reloads itself once
+// so an installed PWA never keeps running a stale shell.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").then(reg => {
+    // An installed PWA can stay "open" for weeks — re-check for a new
+    // version every time it comes back to the foreground.
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) reg.update().catch(() => {});
+    });
+  }).catch(() => {});
+  let hadController = !!navigator.serviceWorker.controller;
+  let swReloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController) { hadController = true; return; } // first install, no reload
+    if (swReloaded) return;
+    swReloaded = true;
+    location.reload();
+  });
+}
 (async () => {
   try {
     await loadLocales();
@@ -888,6 +1025,6 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
   applyChrome();
   // Probe with whatever token is stored (possibly none): if the server has
   // auth disabled (DEBUG_TOKEN="") this succeeds straight away, otherwise a
-  // 401 brings up the login card.
-  runQuery();
+  // 401 brings up the login card. Never queries the devices.
+  initialLoad();
 })();

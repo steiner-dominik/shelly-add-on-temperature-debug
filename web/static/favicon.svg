@@ -1,36 +1,80 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Theme-following icon: dark artwork by default, light artwork via
+       prefers-color-scheme. Two complete groups (not CSS-variable fills) so
+       it renders correctly in every browser that supports SVG favicons.
+       The standalone PNG variants (icon-*.png = dark, icon-light-*.png =
+       light) are rendered from the matching group with `sips`. -->
+  <style>
+    #light { display: none; }
+    @media (prefers-color-scheme: light) {
+      #dark { display: none; }
+      #light { display: inline; }
+    }
+  </style>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="bg-d" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#1d3557"/>
       <stop offset=".55" stop-color="#12213c"/>
       <stop offset="1" stop-color="#0a1220"/>
     </linearGradient>
-    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="sheen-d" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ffffff" stop-opacity=".12"/>
       <stop offset=".5" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
-    <linearGradient id="mercury" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="mercury-d" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#fb923c"/>
       <stop offset="1" stop-color="#ef4444"/>
     </linearGradient>
-    <linearGradient id="trend" x1="0" y1="1" x2="1" y2="0">
+    <linearGradient id="trend-d" x1="0" y1="1" x2="1" y2="0">
       <stop offset="0" stop-color="#2dd4bf"/>
       <stop offset="1" stop-color="#4ade80"/>
     </linearGradient>
+    <linearGradient id="bg-l" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".55" stop-color="#e8edf3"/>
+      <stop offset="1" stop-color="#d5dce5"/>
+    </linearGradient>
+    <linearGradient id="mercury-l" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f97316"/>
+      <stop offset="1" stop-color="#dc2626"/>
+    </linearGradient>
+    <linearGradient id="trend-l" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#0d9488"/>
+      <stop offset="1" stop-color="#16a34a"/>
+    </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
-  <rect width="64" height="64" rx="14" fill="url(#sheen)"/>
-  <!-- thermometer -->
-  <rect x="18.5" y="9" width="9" height="35" rx="4.5" fill="#ffffff" opacity=".16"/>
-  <rect x="18.5" y="9" width="9" height="35" rx="4.5" fill="none" stroke="#ffffff" stroke-opacity=".22" stroke-width="1"/>
-  <rect x="20.8" y="23" width="4.4" height="22" rx="2.2" fill="url(#mercury)"/>
-  <circle cx="23" cy="48.5" r="7" fill="url(#mercury)"/>
-  <circle cx="20.4" cy="46" r="1.7" fill="#ffffff" opacity=".4"/>
-  <line x1="31.5" y1="14" x2="34.5" y2="14" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
-  <line x1="31.5" y1="21" x2="34.5" y2="21" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
-  <line x1="31.5" y1="28" x2="34.5" y2="28" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
-  <!-- trend line -->
-  <path d="M35 42 L42.5 32.5 L47.5 36.5 L56 25.5" fill="none" stroke="url(#trend)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="56" cy="25.5" r="5.5" fill="#4ade80" opacity=".22"/>
-  <circle cx="56" cy="25.5" r="3" fill="#4ade80"/>
+  <g id="dark">
+    <rect width="64" height="64" rx="14" fill="url(#bg-d)"/>
+    <rect width="64" height="64" rx="14" fill="url(#sheen-d)"/>
+    <!-- thermometer -->
+    <rect x="18.5" y="9" width="9" height="35" rx="4.5" fill="#ffffff" opacity=".16"/>
+    <rect x="18.5" y="9" width="9" height="35" rx="4.5" fill="none" stroke="#ffffff" stroke-opacity=".22" stroke-width="1"/>
+    <rect x="20.8" y="23" width="4.4" height="22" rx="2.2" fill="url(#mercury-d)"/>
+    <circle cx="23" cy="48.5" r="7" fill="url(#mercury-d)"/>
+    <circle cx="20.4" cy="46" r="1.7" fill="#ffffff" opacity=".4"/>
+    <line x1="31.5" y1="14" x2="34.5" y2="14" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+    <line x1="31.5" y1="21" x2="34.5" y2="21" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+    <line x1="31.5" y1="28" x2="34.5" y2="28" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+    <!-- trend line -->
+    <path d="M35 42 L42.5 32.5 L47.5 36.5 L56 25.5" fill="none" stroke="url(#trend-d)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="56" cy="25.5" r="5.5" fill="#4ade80" opacity=".22"/>
+    <circle cx="56" cy="25.5" r="3" fill="#4ade80"/>
+  </g>
+  <g id="light">
+    <rect width="64" height="64" rx="14" fill="url(#bg-l)"/>
+    <rect x=".75" y=".75" width="62.5" height="62.5" rx="13.25" fill="none" stroke="#0f172a" stroke-opacity=".14" stroke-width="1.5"/>
+    <!-- thermometer -->
+    <rect x="18.5" y="9" width="9" height="35" rx="4.5" fill="#0f172a" opacity=".07"/>
+    <rect x="18.5" y="9" width="9" height="35" rx="4.5" fill="none" stroke="#0f172a" stroke-opacity=".28" stroke-width="1"/>
+    <rect x="20.8" y="23" width="4.4" height="22" rx="2.2" fill="url(#mercury-l)"/>
+    <circle cx="23" cy="48.5" r="7" fill="url(#mercury-l)"/>
+    <circle cx="20.4" cy="46" r="1.7" fill="#ffffff" opacity=".55"/>
+    <line x1="31.5" y1="14" x2="34.5" y2="14" stroke="#0f172a" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+    <line x1="31.5" y1="21" x2="34.5" y2="21" stroke="#0f172a" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+    <line x1="31.5" y1="28" x2="34.5" y2="28" stroke="#0f172a" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+    <!-- trend line -->
+    <path d="M35 42 L42.5 32.5 L47.5 36.5 L56 25.5" fill="none" stroke="url(#trend-l)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="56" cy="25.5" r="5.5" fill="#16a34a" opacity=".18"/>
+    <circle cx="56" cy="25.5" r="3" fill="#16a34a"/>
+  </g>
 </svg>

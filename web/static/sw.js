@@ -7,7 +7,8 @@
 const CACHE = "shelly-debug-__VERSION__";
 const SHELL = [
   "./", "app.css", "app.js", "favicon.svg", "manifest.webmanifest",
-  "icon-192.png", "icon-512.png", "icon-maskable.png", "locales/index.json",
+  "icon-192.png", "icon-512.png", "icon-light-192.png", "icon-light-512.png",
+  "icon-maskable.png", "locales/index.json",
 ];
 
 self.addEventListener("install", e => {

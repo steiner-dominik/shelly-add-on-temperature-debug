@@ -1,6 +1,9 @@
-<img src="web/static/icon-192.png" align="right" width="92" alt="App icon: thermometer on a Shelly Sensor Add-on">
-
 # 🌡 Shelly Add-on Temperature Debug
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/icon-dark.png">
+  <img src="docs/icon-light.png" alt="App icon: thermometer with a trend line" width="96" align="right">
+</picture>
 
 [![Build, publish and release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/actions/workflows/build.yml/badge.svg)](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/actions/workflows/build.yml)
 [![Latest release](https://img.shields.io/github/v/release/steiner-dominik/shelly-add-on-temperature-debug)](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases)
@@ -11,24 +14,16 @@
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-donate-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/dominik_steiner)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/dominik.st)
 
-A tiny, **stateless** web app that gives anyone a safe, instant
-troubleshooting view of the DS18B20 temperature sensors attached to one or
-more [Shelly Add-ons](https://www.shelly.com/products/shelly-plus-add-on)
-([docs](https://kb.shelly.cloud/knowledge-base/shelly-plus-add-on)) —
-**without** handing out the Shelly admin password or exposing the device
-itself to the internet.
+**A tiny, stateless web app that gives anyone a safe, instant troubleshooting
+view of the DS18B20 temperature and DHT22 humidity sensors attached to your
+[Shelly Add-ons](https://www.shelly.com/products/shelly-plus-add-on) —
+without handing out the Shelly admin password or exposing the device itself
+to the internet.**
 
-> [!NOTE]
-> **Community project.** Not affiliated with, endorsed, or supported by
-> Shelly Group / Allterco Robotics. "Shelly" is a trademark of its
-> respective owner and is used here only to describe compatibility.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-    <img src="docs/screenshot-light.png" alt="Debug page showing two Shellys with DS18B20/DHT22 sensors, one sensor failing with guidance text, a fleet summary with all current readings, and history charts" width="720">
-  </picture>
-</p>
+> ⚠️ **This is an independent community project. It is not affiliated with,
+> endorsed by, or supported by Shelly Group / Allterco Robotics in any way.**
+> "Shelly" is used here solely to describe which devices the software works
+> with ([add-on docs](https://kb.shelly.cloud/knowledge-base/shelly-plus-add-on)).
 
 Typical use case: your dashboard lives at `mydashboard.example.com`, and you
 want a helper to open `mydashboard.example.com/debug`, press one button, and
@@ -36,7 +31,21 @@ immediately see which sensor is healthy, which one reports the infamous
 **85 °C power-on value**, and which one doesn't answer at all — with
 plain-language guidance on what to check.
 
-## Features
+Runs anywhere Docker runs — or as a
+[Home Assistant app](https://github.com/steiner-dominik/home-assistant-apps) with one click.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+    <img src="docs/screenshot-light.png" alt="Debug page showing two Shellys with DS18B20/DHT22 sensors, one sensor failing with guidance text, a fleet summary with all current readings, and history charts" width="850">
+  </picture>
+  <br>
+  <sub>The page follows your system's light/dark theme — so does this screenshot. All data shown is mock data.</sub>
+</p>
+
+---
+
+## ✨ Features
 
 - 🔒 **Server-side querying** — the browser never talks to the Shelly and
   never sees the password (RFC 7616 digest auth, SHA-256)
@@ -49,9 +58,9 @@ plain-language guidance on what to check.
 - 🩺 **Failure classification with guidance**: OK · 85 °C reset · no
   reading · missing · unreachable · auth failed · no sensors
 - 📊 **Fleet summary bar** with per-device health chips, the **current
-  reading of every sensor at a glance** (for the days you just want to know
-  the temperatures), and a **search filter** to zoom in on the one Shelly
-  you are troubleshooting
+  reading of every sensor at a glance** — grouped per Shelly as compact
+  bubbles, for the days you just want to know the temperatures — and a
+  **search filter** to zoom in on the one Shelly you are troubleshooting
 - 🎯 **Per-sensor querying** — poll a single suspect sensor via its
   dedicated RPC without touching the rest
 - 📈 **In-memory history graph** (one point per query) makes intermittent
@@ -72,20 +81,23 @@ plain-language guidance on what to check.
   env, pauses in background tabs)
 - 🕙 **Background polling** (`BACKGROUND_POLL_SECONDS`): the server itself
   queries the Shellys on an interval, so history charts are already
-  populated the moment someone opens the page
+  populated the moment someone opens the page — opening the page never
+  queries the devices by itself
 - ⚡ **Live dashboard**: the page picks up new readings every 5 seconds
   (from background polling or other viewers) without any clicking — via a
   cached endpoint that never touches the devices
-- 📱 **Installable as a PWA** — pinned toolbar and a layout tuned for
-  phones make it a pocket sensor monitor
+- 📱 **Installable as a PWA** — pinned toolbar, a layout tuned for phones,
+  and automatic full reload when a new version is deployed make it a pocket
+  sensor monitor
 - 📊 Optional **Prometheus `/metrics`** endpoint for long-term monitoring
-- 🌍 **Multi-language** (English, German — [add yours](docs/TRANSLATIONS.md)
-  with a single JSON file)
-- 🌗 **Dark / light / auto** theme, switchable on the page
+- 🌍 **English & German** — picks the browser language, switchable on the
+  page ([add yours](docs/TRANSLATIONS.md) with a single JSON file)
+- 🌗 **Dark / light / auto** theme, switchable on the page — the app icon
+  follows the system theme too
 - 🪶 **Stateless by design**: env-var config, history in RAM, nothing ever
   written to disk; ~9 MB `FROM scratch` image, zero third-party dependencies
 
-## How it works
+## 🔍 How it works
 
 ```
 Browser ──HTTPS──▶ reverse proxy ──/debug──▶ this container ──HTTP digest auth──▶ Shelly device(s)
@@ -107,7 +119,7 @@ Statuses the page distinguishes, each with localized guidance:
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for the full DS18B20
 failure-mode guide.
 
-## Quick start
+## 🚀 Quick start (Docker)
 
 ```bash
 docker run --rm -p 8080:8080 \
@@ -121,14 +133,6 @@ docker run --rm -p 8080:8080 \
 Open <http://localhost:8080/debug> and enter the token (echo it first if you
 generated it inline). The browser remembers it across reloads.
 
-### Home Assistant
-
-The app is also available as a Home Assistant add-on from the
-[steiner-dominik/home-assistant-apps](https://github.com/steiner-dominik/home-assistant-apps)
-repository — one-click install, devices configured on the add-on's
-configuration page, opened via ingress from the sidebar (no token or port
-setup needed).
-
 ### docker-compose
 
 A **static** [docker-compose.example.yml](deploy/docker-compose.example.yml)
@@ -136,8 +140,9 @@ and a fully commented [env.example](deploy/env.example) declaring **all**
 options ship in this repo (under `deploy/`) and are attached to every
 [GitHub release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases).
 All configuration lives in `.env` — the compose file itself never needs
-editing. It pins the project name (`name: shelly-debug`) and runs on its own
-Docker network, so it won't collide with other compose stacks on the host:
+editing. It pins the project and container name (`shelly-debug`) and runs on
+its own Docker network, so it won't collide with other compose stacks on the
+host:
 
 ```bash
 curl -LO https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases/latest/download/docker-compose.example.yml
@@ -147,10 +152,21 @@ mv docker-compose.example.yml docker-compose.yml
 docker compose up -d
 ```
 
-## Configuration (environment variables)
+## 🏠 Home Assistant app
 
-Endpoints are numbered `SHELLY_1_*`, `SHELLY_2_*`, … — numbering must be
-contiguous and start at 1.
+Want this inside Home Assistant, with ingress and the app store handling
+updates? Use the companion app repository:
+
+👉 **[steiner-dominik/home-assistant-apps](https://github.com/steiner-dominik/home-assistant-apps)**
+
+The HA app uses the exact same image built from this repository — one-click
+install, devices configured on the app's configuration page, opened via
+ingress from the sidebar (no token or port setup needed).
+
+## ⚙️ Configuration
+
+All settings are environment variables. Endpoints are numbered
+`SHELLY_1_*`, `SHELLY_2_*`, … — numbering must be contiguous and start at 1.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -171,7 +187,7 @@ contiguous and start at 1.
 | `AUTO_REFRESH_DEFAULT` | no | `false` | Set to `true` to start auto-refresh enabled for browsers that never touched the toggle |
 | `METRICS_ENABLED` | no | `false` | Set to `true` to expose Prometheus metrics at `{BASE_PATH}/metrics` |
 
-## Reverse proxy
+## 🔀 Reverse proxy
 
 The app already serves everything under `BASE_PATH` (default `/debug`), so a
 path-preserving proxy rule is all you need.
@@ -199,74 +215,20 @@ location /debug {
 - traefik.http.services.shelly-debug.loadbalancer.server.port=8080
 ```
 
-## Versioning & releases
-
-Releases use **CalVer with a mandatory minor**: `YYYY.MM.DD.N` (UTC), i.e.
-`2026.07.19.1` for the first release of a day, `.2`, `.3`, … for further
-releases on the same day. Every push to `main` automatically:
-
-1. runs tests,
-2. builds and pushes the multi-arch image to GHCR, tagged
-   `latest`, `main`, `sha-<commit>`, and the CalVer version,
-3. creates a git tag + [GitHub release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases)
-   with generated notes and standalone Linux binaries (amd64/arm64) attached.
-
-Pin the CalVer tag (e.g. `:2026.07.19.1`) in production if you don't want
-`latest` to move under you. The running version is shown in the page footer.
-
-## Languages
-
-The page ships in **English** and **German** and picks the browser's language
-automatically (switchable on the page). Adding a language is a single JSON
-file — see [docs/TRANSLATIONS.md](docs/TRANSLATIONS.md). Contributions
-welcome!
-
-## Security
-
-Designed to be internet-facing behind a TLS reverse proxy: the Shelly
-password never leaves the server, device queries are read-only and
-rate-limited (no amplification against your devices; the only write
-capability — attaching new sensors — requires the separate
-`PROVISION_PASSPHRASE` and does not exist otherwise), the API always
-requires the `DEBUG_TOKEN` (headers only — never in URLs), and the page
-sets a strict Content-Security-Policy (no inline scripts/styles) and loads
-zero external resources. Details, threat model, and hosting
-recommendations: [SECURITY.md](SECURITY.md).
-
-## Software bill of materials & updating
-
-The whole point of this project is a minimal supply chain — there is **no
-third-party runtime code at all**:
-
-| Component | Where | What it is | How to update |
-|---|---|---|---|
-| Go standard library | `go.mod` (no external modules) | The only code dependency | Bump the `go` directive in `go.mod` |
-| `golang:1.26-alpine` | `Dockerfile` (build stage only) | Compiler image; also the source of the CA bundle | Bump the tag (Dependabot PRs this) |
-| `scratch` | `Dockerfile` (runtime) | Empty base image — nothing to patch | – |
-| `actions/checkout`, `actions/setup-go`, `docker/*` actions | `.github/workflows/build.yml` | CI plumbing, not shipped in the image | Bump versions (Dependabot PRs this) |
-| Frontend | `web/static/` (`index.html`, `app.css`, `app.js`, `sw.js`, `manifest.webmanifest`, icons) | Hand-written vanilla JS/CSS, no frameworks, no CDN loads | Edit the files |
-
-[Dependabot is configured](.github/dependabot.yml) to open weekly PRs for the
-Go toolchain, the Docker base image, and the GitHub Actions. **If this repo
-ever goes unmaintained**, updating it yourself is: bump the two version
-strings (`go.mod`, `Dockerfile`), push to a fork with Actions enabled, and CI
-tests + builds + releases everything. `go build` on any machine with Go
-installed produces the identical single binary.
-
-## API
+## 🔌 API
 
 | Endpoint | Method | Description |
 |---|---|---|
 | `{BASE_PATH}/` | GET | The debug page |
 | `{BASE_PATH}/api/query` | POST/GET | Query all Shellys live (rate-limited, cached), append to history, return results incl. status codes |
 | `{BASE_PATH}/api/query/sensor?ep={idx}&key={key}` | POST/GET | Query one single sensor (its `Temperature`/`Humidity.GetStatus` RPC); `ep` is the 0-based endpoint index, `key` e.g. `temperature:100` |
-| `{BASE_PATH}/api/results` | GET | The most recent (cached) query result **without touching the devices** — the page polls this every 5 s to stay live; `ts` is `0` while nothing has been queried yet |
+| `{BASE_PATH}/api/results` | GET | The most recent (cached) query result **without touching the devices** — the page polls this every 5 s to stay live (and loads it on open instead of querying); `ts` is `0` while nothing has been queried yet |
 | `{BASE_PATH}/api/history` | GET | The in-memory history buffer; `?limit=N` returns only the newest N samples per sensor, `?since=<unix>` only samples from that time on (the page charts use both, driven by the selected time range) |
-| `{BASE_PATH}/manifest.webmanifest`, `{BASE_PATH}/sw.js` | GET | PWA manifest and service worker (app shell only; API responses are never cached) |
 | `{BASE_PATH}/api/history` | DELETE | Clear the in-memory history |
 | `{BASE_PATH}/api/provision/scan?ep={idx}` | POST/GET | Scan the endpoint's 1-Wire bus (`SensorAddon.OneWireScan`); returns probes with their linked component (or none) — only with `PROVISION_PASSPHRASE` set, requires the `X-Provision-Key` header |
 | `{BASE_PATH}/api/provision/add` | POST | Attach one scanned probe: body `{"ep":0,"addr":"…","name":"…"}`; adds the peripheral, reboots the Shelly, then names the new component in the background — same gating as scan |
 | `{BASE_PATH}/api/provision/status?ep={idx}` | GET | Progress of provisioning jobs (`rebooting` → `naming` → `done`/`error`) — same gating as scan |
+| `{BASE_PATH}/manifest.webmanifest`, `{BASE_PATH}/sw.js` | GET | PWA manifest and service worker (app shell only; API responses are never cached) |
 | `{BASE_PATH}/locales/index.json` | GET | Available languages |
 | `{BASE_PATH}/locales/{code}.json` | GET | Locale strings (labels + guidance) |
 | `{BASE_PATH}/metrics` | GET | Prometheus metrics (only when `METRICS_ENABLED=true`) |
@@ -304,7 +266,34 @@ Machine-readable status codes (`ok`, `reset85`, `read_error`, `missing`,
 `unreachable`, `auth_failed`, `no_sensors`) are returned in the JSON API and
 as metric labels; human-readable texts live in the locale files.
 
-## Development
+## 🏷️ Versioning & releases
+
+Releases use **CalVer with a mandatory minor**: `YYYY.MM.DD.N` (UTC), i.e.
+`2026.07.19.1` for the first release of a day, `.2`, `.3`, … for further
+releases on the same day. Every push to `main` automatically:
+
+1. runs tests,
+2. builds and pushes the multi-arch image to GHCR, tagged
+   `latest`, `main`, `sha-<commit>`, and the CalVer version,
+3. creates a git tag + [GitHub release](https://github.com/steiner-dominik/shelly-add-on-temperature-debug/releases)
+   with generated notes and standalone Linux binaries (amd64/arm64) attached.
+
+Pin the CalVer tag (e.g. `:2026.07.19.1`) in production if you don't want
+`latest` to move under you. The running version is shown in the page footer.
+
+## 🔒 Security
+
+Designed to be internet-facing behind a TLS reverse proxy: the Shelly
+password never leaves the server, device queries are read-only and
+rate-limited (no amplification against your devices; the only write
+capability — attaching new sensors — requires the separate
+`PROVISION_PASSPHRASE` and does not exist otherwise), the API always
+requires the `DEBUG_TOKEN` (headers only — never in URLs), and the page
+sets a strict Content-Security-Policy (no inline scripts/styles) and loads
+zero external resources. Details, threat model, and hosting
+recommendations: [SECURITY.md](SECURITY.md).
+
+## 🛠️ Development
 
 ```bash
 export DEBUG_TOKEN=dev SHELLY_1_HOST=192.168.1.50 SHELLY_1_PASSWORD='…'
@@ -313,7 +302,50 @@ go run .
 go test ./...
 ```
 
-## ❤️ Support
+The layout is deliberately small: a thin [main.go](main.go) at the root,
+all Go logic in [internal/app/](internal/app/), and the dependency-free
+frontend in [web/](web/) ([index.html](web/static/index.html) markup,
+[app.css](web/static/app.css), [app.js](web/static/app.js) logic,
+[sw.js](web/static/sw.js) service worker, [locales/](web/locales/)
+translations).
+
+The app icon set ([favicon.svg](web/static/favicon.svg) with automatic
+light/dark switching, PWA and README icons) comes from one SVG artwork —
+the PNG variants are rendered from the matching theme group with `sips`.
+
+### 🌍 Contributing a translation
+
+The page ships in **English** and **German** and picks the browser's
+language automatically (switchable on the page). Adding a language is a
+single JSON file in [web/locales/](web/locales/) — see
+[docs/TRANSLATIONS.md](docs/TRANSLATIONS.md). Contributions welcome!
+
+## 📦 Dependencies, SBOM & continuity
+
+The whole point of this project is a minimal supply chain — there is **no
+third-party runtime code at all**:
+
+| Component | Where | What it is | How to update |
+|---|---|---|---|
+| Go standard library | `go.mod` (no external modules) | The only code dependency | Bump the `go` directive in `go.mod` |
+| `golang:1.26-alpine` | `Dockerfile` (build stage only) | Compiler image; also the source of the CA bundle | Bump the tag (Dependabot PRs this) |
+| `scratch` | `Dockerfile` (runtime) | Empty base image — nothing to patch | – |
+| `actions/checkout`, `actions/setup-go`, `docker/*` actions | `.github/workflows/build.yml` | CI plumbing, not shipped in the image | Bump versions (Dependabot PRs this) |
+| Frontend | `web/static/` (`index.html`, `app.css`, `app.js`, `sw.js`, `manifest.webmanifest`, icons) | Hand-written vanilla JS/CSS, no frameworks, no CDN loads | Edit the files |
+
+[Dependabot is configured](.github/dependabot.yml) to open weekly PRs for the
+Go toolchain, the Docker base image, and the GitHub Actions.
+
+**If this project ever becomes unmaintained**, updating it yourself is: bump
+the two version strings (`go.mod`, `Dockerfile`), push to a fork with
+Actions enabled, and CI tests + builds + releases everything. `go build` on
+any machine with Go installed produces the identical single binary. Home
+Assistant users: fork
+[home-assistant-apps](https://github.com/steiner-dominik/home-assistant-apps)
+too and point `ha-shelly-add-on-temperature-debug/config.yaml`'s `image:`
+key at your own GHCR image.
+
+## ❤️ Support the project
 
 If this project is useful to you, you can support its development:
 
@@ -321,6 +353,16 @@ If this project is useful to you, you can support its development:
 - [Ko-fi](https://ko-fi.com/dominik_steiner)
 - [Buy Me a Coffee](https://buymeacoffee.com/dominik.st)
 
-## License
+## 📄 License
 
 [MIT](LICENSE)
+
+## ⚖️ Disclaimer
+
+**This project is not affiliated with, endorsed by, sponsored by, or in any
+way officially connected to Shelly Group / Allterco Robotics** or any of its
+subsidiaries. All product names, trademarks and registered trademarks are
+property of their respective owners.
+
+This software is provided “as is” and without any warranty. Use at your own
+risk.
