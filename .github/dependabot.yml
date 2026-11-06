@@ -1,3 +1,7 @@
+# Automated dependency updates. Every merge to main publishes a release, so
+# updates are grouped per ecosystem (one PR, one release) and fresh versions
+# wait a few days (cooldown) before being proposed. Security updates bypass
+# both and arrive immediately.
 version: 2
 updates:
   # Go toolchain / future Go dependencies (currently: none, stdlib only)
@@ -5,13 +9,31 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+    cooldown:
+      default-days: 5
+    groups:
+      go:
+        patterns: ["*"]
   # Base images in the Dockerfile (golang:x-alpine)
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+      day: monday
+    cooldown:
+      default-days: 5
+    groups:
+      docker:
+        patterns: ["*"]
   # GitHub Actions used by the workflow
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+    cooldown:
+      default-days: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
