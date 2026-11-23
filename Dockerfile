@@ -1,5 +1,5 @@
 # Build stage — static binary, no CGO
-FROM golang:1.27.3-alpine AS build
+FROM golang:1.27.4-alpine AS build
 ARG VERSION=dev
 WORKDIR /src
 COPY go.mod ./
